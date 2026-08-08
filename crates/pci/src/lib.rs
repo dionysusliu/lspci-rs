@@ -1,0 +1,1 @@
+pub fn crate_is_ready() {}

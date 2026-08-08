@@ -1,0 +1,12 @@
+[workspace]
+members = [
+    "crates/pci-sys",
+    "crates/pci",
+    "crates/lspci-rs",
+]
+resolver="2"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
