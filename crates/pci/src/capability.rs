@@ -130,9 +130,10 @@ fn walk_chain(
         let header = match reader.read(u32::from(current), header_len) {
             Ok(bytes) => bytes,
             Err(failure) => {
+                let capabilities_empty = capabilities.is_empty();
                 return ChainDiscovery {
                     capabilities,
-                    status: if capabilities.is_empty() {
+                    status: if capabilities_empty {
                         PciCapabilityChainStatus::Unavailable(failure.reason)
                     } else {
                         PciCapabilityChainStatus::Truncated

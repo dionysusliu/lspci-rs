@@ -141,10 +141,18 @@ impl ConfigSpaceReader {
                 return Err(failure);
             }
         };
+        let raw_offset = match c_int::try_from(offset) {
+            Ok(offset) => offset,
+            Err(_) => {
+                let failure = self.record_failure(offset, length);
+                return Err(failure);
+            }
+        };
 
         let mut bytes = vec![0u8; length as usize];
-        let read =
-            unsafe { pci_sys::bindings::pci_read_block(self.raw, offset, bytes.as_mut_ptr(), len) };
+        let read = unsafe {
+            pci_sys::bindings::pci_read_block(self.raw, raw_offset, bytes.as_mut_ptr(), len)
+        };
 
         if read != len {
             let failure = self.record_failure(offset, length);
