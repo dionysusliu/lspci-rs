@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand, ValueEnum};
+use pci::PciAddress;
 
 #[derive(Debug, Parser)]
 #[command(name = "lspci-rs")]
@@ -11,6 +12,13 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     List {
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+    },
+
+    Show {
+        address: PciAddress,
+
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         format: OutputFormat,
     },
