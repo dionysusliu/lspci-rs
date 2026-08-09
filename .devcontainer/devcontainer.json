@@ -1,0 +1,35 @@
+{
+  "name": "lspci-rs Alibaba Linux 3",
+
+  "build": {
+    "dockerfile": "../containers/el8-builder/Containerfile",
+    "context": "..",
+    "options": [
+      "--platform=linux/amd64"
+    ]
+  },
+
+  "runArgs": [
+    "--platform=linux/amd64",
+    "--memory=6g",
+    "--memory-swap=8g"
+  ],
+
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+  "workspaceFolder": "/workspace",
+  "remoteUser": "root",
+
+  "customizations": {
+    "vscode": {
+      "extensions": ["rust-lang.rust-analyzer"],
+      "settings": {
+        "rust-analyzer.cargo.target": "x86_64-unknown-linux-gnu",
+        "rust-analyzer.check.command": "check",
+        "rust-analyzer.cargo.buildScripts.enable": true
+      }
+    }
+  },
+
+  "mounts": ["source=lspci-rs-target,target=/workspace/target,type=volume"]
+
+}

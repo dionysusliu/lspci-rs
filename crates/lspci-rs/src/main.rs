@@ -1,4 +1,14 @@
+mod cli;
+
+use clap::Parser;
+use cli::Cli;
 
 fn main() {
-    println!("lspci-rs workspace is ready")
+    let cli = Cli::parse();
+
+    match cli.command {
+        cli::Command::List { format } => {
+            println!("format: {format:?}")
+        }
+    }
 }

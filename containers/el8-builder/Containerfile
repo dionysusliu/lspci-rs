@@ -1,0 +1,16 @@
+FROM alibaba-cloud-linux-3-registry.cn-hangzhou.cr.aliyuncs.com/alinux3/alinux3:latest
+
+RUN dnf install -y \
+    bash gcc gcc-c++ make pkgconf-pkg-config pciutils-devel clang llvm-devel clang-devel git curl ca-certificates ripgrep tar gzip \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf
+
+RUN curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+RUN rustup target add x86_64-unknown-linux-gnu \
+    && rustup component add rustfmt rust-src
+
+WORKDIR /workspace
+
