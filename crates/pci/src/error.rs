@@ -11,6 +11,9 @@ pub enum PciError {
         requested_fields: u32,
     },
     Message(String),
+    DeviceNotFound {
+        address: PciAddress,
+    },
 }
 
 impl Error for PciError {}
@@ -34,6 +37,9 @@ impl Display for PciError {
                 )
             }
             Self::Message(message) => f.write_str(message),
+            Self::DeviceNotFound { address } => {
+                write!(f, "PCI device {address} was not found")
+            }
         }
     }
 }

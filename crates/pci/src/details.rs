@@ -1,0 +1,27 @@
+use crate::{PciAddress, PciDevice, field::PciField};
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PciResource {
+    pub index: u8,
+    pub start: u64,
+    pub size: u64,
+    pub flags: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PciDeviceDetails {
+    pub revision: PciField<u8>,
+    pub programming_interface: PciField<u8>,
+    pub subsystem_vendor_id: PciField<u16>,
+    pub subsystem_device_id: PciField<u16>,
+    pub parent: PciField<PciAddress>,
+    pub irq: PciField<u32>,
+    pub driver: PciField<String>,
+    pub resources: PciField<Vec<PciResource>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PciInspection {
+    pub device: PciDevice,
+    pub details: PciDeviceDetails,
+}

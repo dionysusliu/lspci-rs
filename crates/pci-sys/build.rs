@@ -12,9 +12,10 @@ fn main() {
         .allowlist_type("pci_access")
         .allowlist_type("pci_dev")
         .allowlist_type("pci_lookup_mode")
-        .allowlist_function("pci_(alloc|init|cleanup|scan_bus|fill_info|lookup_name)")
-        .allowlist_var("PCI_FILL_IDENT")
-        .allowlist_var("PCI_FILL_CLASS")
+        .allowlist_function(
+            "pci_(alloc|init|cleanup|scan_bus|fill_info|lookup_name|get_string_property)",
+        )
+        .allowlist_var("PCI_FILL_.*")
         .allowlist_var("PCI_LOOKUP_VENDOR")
         .allowlist_var("PCI_LOOKUP_DEVICE")
         .allowlist_var("PCI_LOOKUP_CLASS")

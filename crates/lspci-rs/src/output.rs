@@ -33,10 +33,9 @@ pub fn render_text(snapshot: &PciSnapshot) -> String {
     output
 }
 
-
 #[derive(Debug, Serialize)]
 struct JsonSnapshot<'a> {
-    devices: Vec<JsonDevice<'a>>
+    devices: Vec<JsonDevice<'a>>,
 }
 
 #[derive(Debug, Serialize)]
