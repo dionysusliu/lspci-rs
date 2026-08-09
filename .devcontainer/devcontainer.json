@@ -1,17 +1,13 @@
 {
   "name": "lspci-rs Alibaba Linux 3",
-
+  
   "build": {
     "dockerfile": "../containers/el8-builder/Containerfile",
-    "context": "..",
-    "options": [
-      "--platform=linux/amd64"
-    ]
+    "context": ".."
   },
 
   "runArgs": [
-    "--platform=linux/amd64",
-    "--memory=6g",
+    "--memory=4g",
     "--memory-swap=8g"
   ],
 

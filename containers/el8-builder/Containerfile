@@ -5,7 +5,14 @@ RUN dnf install -y \
     && dnf clean all \
     && rm -rf /var/cache/dnf
 
-RUN curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+ENV RUSTUP_DIST_SERVER=https://rsproxy.cn
+ENV RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup
+
+RUN curl --proto "=https" \
+    --tlsv1.2 \
+    -sSf \
+    https://rsproxy.cn/rustup-init.sh \
+    | sh -s -- -y --profile minimal
 
 ENV PATH="/root/.cargo/bin:${PATH}"
 

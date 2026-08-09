@@ -17,9 +17,24 @@ docker run --rm \
     "$image_name" \
     bash -lc '
         set -euo pipefail 
+
+        target_triple=x86_64-unknown-linux-gnu
+        binary="target/${target_triple}/release/lspci-rs"
+
         cat /etc/os-release 
         rpm -q pciutils-libs pciutils-devel
         pkg-config --modversion libpci
         rustc --version
-        cargo check -p pci-sys --target x86_64-unknown-linux-gnu
+
+        cargo fmt --all -- --check
+        cargo build \
+            --release \
+            -p lspci-rs \
+            --target "$target_triple"
+        
+        test -x "$binary"
+
+        echo "target=$target_triple"
+        echo "binary=$binary"
+        ldd "$binary"
     '
