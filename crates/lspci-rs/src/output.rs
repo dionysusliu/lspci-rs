@@ -1,6 +1,6 @@
 use pci::{PciAddress, PciField, PciInspection, PciResource, PciSnapshot};
 use serde::Serialize;
-use std::fmt::{Display, Write as _};
+use std::fmt::{Display, LowerHex, Write as _};
 
 pub fn render_text(snapshot: &PciSnapshot) -> String {
     let mut output = String::new();
@@ -135,14 +135,14 @@ pub fn render_inspection_text(inspection: &PciInspection) -> String {
     writeln!(
         output,
         "  subsystem vendor: {}",
-        render_field(&details.subsystem_vendor_id)
+        render_hex_field(&details.subsystem_vendor_id)
     )
     .unwrap();
 
     writeln!(
         output,
         "  subsystem device: {}",
-        render_field(&details.subsystem_device_id)
+        render_hex_field(&details.subsystem_device_id)
     )
     .unwrap();
 
@@ -185,6 +185,18 @@ fn render_field<T: Display>(field: &PciField<T>) -> String {
         PciField::Unavailable { reason } => {
             format!("<unavailable: {reason:?}>")
         }
+        PciField::NotApplicable => "<not_available>".to_owned(),
+    }
+}
+
+fn render_hex_field<T: LowerHex>(field: &PciField<T>) -> String {
+    match field {
+        PciField::Available(value) => format!("0x{value:x}"),
+
+        PciField::Unavailable { reason } => {
+            format!("<unavailable: {reason:?}>")
+        }
+
         PciField::NotApplicable => "<not-applicable>".to_owned(),
     }
 }
@@ -213,8 +225,8 @@ pub fn render_inspection_json(inspection: &PciInspection) -> Result<String, serd
         details: JsonDetails {
             revision: json_field(&details.revision),
             programming_interface: json_field(&details.programming_interface),
-            subsystem_vendor_id: json_field(&details.subsystem_vendor_id),
-            subsystem_device_id: json_field(&details.subsystem_device_id),
+            subsystem_vendor_id: json_hex_field(&details.subsystem_vendor_id),
+            subsystem_device_id: json_hex_field(&details.subsystem_device_id),
             parent: json_parent(&details.parent),
             irq: json_field(&details.irq),
             driver: json_field(&details.driver),
@@ -235,8 +247,8 @@ struct JsonInspection<'a> {
 struct JsonDetails {
     revision: JsonField<u8>,
     programming_interface: JsonField<u8>,
-    subsystem_vendor_id: JsonField<u16>,
-    subsystem_device_id: JsonField<u16>,
+    subsystem_vendor_id: JsonField<String>,
+    subsystem_device_id: JsonField<String>,
     parent: JsonField<String>,
     irq: JsonField<u32>,
     driver: JsonField<String>,
@@ -267,6 +279,26 @@ fn json_field<T: Clone>(field: &PciField<T>) -> JsonField<T> {
         PciField::Available(value) => JsonField {
             state: "available",
             value: Some(value.clone()),
+            reason: None,
+        },
+        PciField::Unavailable { reason } => JsonField {
+            state: "unavailable",
+            value: None,
+            reason: Some(format!("{reason:?}")),
+        },
+        PciField::NotApplicable => JsonField {
+            state: "not_available",
+            value: None,
+            reason: None,
+        },
+    }
+}
+
+fn json_hex_field<T: LowerHex>(field: &PciField<T>) -> JsonField<String> {
+    match field {
+        PciField::Available(value) => JsonField {
+            state: "available",
+            value: Some(format!("0x{value:x}")),
             reason: None,
         },
         PciField::Unavailable { reason } => JsonField {

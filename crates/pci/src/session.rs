@@ -2,11 +2,9 @@ use std::{ffi::CStr, ptr};
 
 use pci_sys::bindings::{
     PCI_FILL_BASES, PCI_FILL_CLASS, PCI_FILL_CLASS_EXT, PCI_FILL_DRIVER, PCI_FILL_IDENT,
-    PCI_FILL_IO_FLAGS, PCI_FILL_IRQ, PCI_FILL_PARENT, PCI_FILL_SIZES, PCI_FILL_SUBSYS, pci_access,
-    pci_alloc, pci_cleanup, pci_fill_info, pci_get_string_property, pci_init,
-    pci_lookup_mode_PCI_LOOKUP_CLASS, pci_lookup_mode_PCI_LOOKUP_DEVICE,
-    pci_lookup_mode_PCI_LOOKUP_NO_NUMBERS, pci_lookup_mode_PCI_LOOKUP_VENDOR, pci_lookup_name,
-    pci_scan_bus,
+    PCI_FILL_IO_FLAGS, PCI_FILL_IRQ, PCI_FILL_PARENT, PCI_FILL_SIZES, PCI_FILL_SUBSYS, pci_alloc,
+    pci_cleanup, pci_fill_info, pci_get_string_property, pci_init,
+    pci_lookup_mode_PCI_LOOKUP_NO_NUMBERS, pci_scan_bus,
 };
 
 use crate::{
@@ -196,7 +194,15 @@ impl PciSession {
                 let mut values = Vec::new();
 
                 for index in 0..6 {
-                    let start = (*raw).base_addr[index] as u64;
+                    let raw_base = (*raw).base_addr[index] as u64;
+                    let start = if raw_base & 0x1 != 0 {
+                        // I/O BAR, last 2 bits are attributes
+                        raw_base & !0x3
+                    } else {
+                        // Memory BAR, last 4bites are attributes
+                        raw_base & !0xf
+                    };
+
                     let size = (*raw).size[index] as u64;
                     let flags = (*raw).flags[index] as u64;
 
