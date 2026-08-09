@@ -1,4 +1,7 @@
-use crate::{PciAddress, PciDevice, field::PciField};
+use crate::{
+    PciAddress, PciDevice,
+    field::{PciCapabilityReport, PciField},
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PciResource {
@@ -18,6 +21,7 @@ pub struct PciDeviceDetails {
     pub irq: PciField<u32>,
     pub driver: PciField<String>,
     pub resources: PciField<Vec<PciResource>>,
+    pub capabilities: PciField<PciCapabilityReport>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
