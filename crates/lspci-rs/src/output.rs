@@ -355,6 +355,84 @@ fn render_capability_content(content: &PciCapabilityContent) -> String {
             sriov.control
         ),
         PciCapabilityContent::Aer(aer) => render_aer_text(aer),
+        PciCapabilityContent::Ltr(ltr) => format!(
+            "snoop={}:{} no_snoop={}:{}",
+            ltr.snoop_value, ltr.snoop_scale, ltr.no_snoop_value, ltr.no_snoop_scale
+        ),
+        PciCapabilityContent::Ats(ats) => format!(
+            "queue_depth={} enable={} page_aligned={} stu={}",
+            ats.invalidate_queue_depth, ats.enable, ats.page_aligned, ats.smallest_translation_unit
+        ),
+        PciCapabilityContent::Pri(pri) => format!(
+            "enable={} stopped={} capacity={} allocation={}",
+            pri.enable, pri.stopped, pri.outstanding_capacity, pri.outstanding_allocation
+        ),
+        PciCapabilityContent::Pasid(pasid) => format!(
+            "width={} exec_supported={} priv_supported={} enable={}",
+            pasid.max_pasid_width,
+            pasid.execute_supported,
+            pasid.privileged_supported,
+            pasid.enable
+        ),
+        PciCapabilityContent::Ptm(ptm) => format!(
+            "root_capable={} clock_capable={} enable={} root_select={} granularity={}",
+            ptm.root_capable, ptm.clock_capable, ptm.enable, ptm.root_select, ptm.granularity
+        ),
+        PciCapabilityContent::Dpc(dpc) => format!(
+            "trigger_enable={} trigger_status={} reason={} interrupt_enable={} source=0x{:04x}",
+            dpc.trigger_enable,
+            dpc.trigger_status,
+            dpc.trigger_reason,
+            dpc.interrupt_enable,
+            dpc.error_source_id
+        ),
+        PciCapabilityContent::Tph(tph) => format!(
+            "location={} size={} mode_select={} no_st={} device_specific={}",
+            tph.st_table_location,
+            tph.st_table_size,
+            tph.st_mode_select,
+            tph.no_st_mode,
+            tph.device_specific_mode
+        ),
+        PciCapabilityContent::VendorExt(vendor_ext) => format!(
+            "vendor=0x{:04x} rev={} len={} data={}",
+            vendor_ext.vendor_id,
+            vendor_ext.revision,
+            vendor_ext.length,
+            vendor_ext
+                .data
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<Vec<_>>()
+                .join("")
+        ),
+        PciCapabilityContent::Dvsec(dvsec) => format!(
+            "vendor=0x{:04x} rev={} id=0x{:04x} len={} data={}",
+            dvsec.vendor_id,
+            dvsec.revision,
+            dvsec.dvsec_id,
+            dvsec.length,
+            dvsec
+                .data
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<Vec<_>>()
+                .join("")
+        ),
+        PciCapabilityContent::Vc(vc) => format!(
+            "vc_count={} ref_clock={} port_control=0x{:04x} port_status=0x{:04x} resources={}",
+            vc.extended_vc_count,
+            vc.reference_clock,
+            vc.port_control,
+            vc.port_status,
+            vc.resources.len()
+        ),
+        PciCapabilityContent::SecondaryPcie(secondary) => format!(
+            "perform_eq={} eq_interrupt={} lane_eq=0x{:08x}",
+            secondary.perform_equalization,
+            secondary.equalization_request_interrupt,
+            secondary.lane_equalization_control
+        ),
     }
 }
 
@@ -633,6 +711,29 @@ enum JsonCapabilityContent {
     Sriov(JsonSriov),
     #[serde(rename = "aer")]
     Aer(JsonAer),
+    #[serde(rename = "ltr")]
+    Ltr(JsonLtr),
+    #[serde(rename = "ats")]
+    Ats(JsonAts),
+    #[serde(rename = "pri")]
+    Pri(JsonPri),
+    #[serde(rename = "pasid")]
+    Pasid(JsonPasid),
+    #[serde(rename = "ptm")]
+    Ptm(JsonPtm),
+    #[serde(rename = "dpc")]
+    Dpc(JsonDpc),
+    #[serde(rename = "tph")]
+    Tph(JsonTph),
+    #[serde(rename = "vendor_ext")]
+    VendorExt(JsonVendorExt),
+    #[serde(rename = "dvsec")]
+    Dvsec(JsonDvsec),
+    #[serde(rename = "vc")]
+    Vc(JsonVc),
+    #[serde(rename = "secondary_pcie")]
+    SecondaryPcie(JsonSecondaryPcie),
+
     #[serde(rename = "slot_id")]
     SlotId(JsonSlotId),
     #[serde(rename = "hot_plug")]
@@ -783,6 +884,131 @@ struct JsonAer {
     #[serde(skip_serializing_if = "Option::is_none")]
     error_source_id: Option<String>,
 }
+
+#[derive(Debug, Serialize)]
+struct JsonLtr {
+    snoop_value: u16,
+    snoop_scale: u8,
+    no_snoop_value: u16,
+    no_snoop_scale: u8,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonAts {
+    invalidate_queue_depth: u8,
+    enable: bool,
+    page_aligned: bool,
+    smallest_translation_unit: u8,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPri {
+    enable: bool,
+    reset: bool,
+    response_failure: bool,
+    unexpected_group_index: bool,
+    stopped: bool,
+    outstanding_capacity: u32,
+    outstanding_allocation: u32,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPasid {
+    execute_supported: bool,
+    privileged_supported: bool,
+    max_pasid_width: u8,
+    enable: bool,
+    execute_enable: bool,
+    privileged_enable: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPtm {
+    root_capable: bool,
+    clock_capable: bool,
+    enable: bool,
+    root_select: bool,
+    granularity: u8,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonDpc {
+    interrupt_message_number: u8,
+    rp_pio_extensions: bool,
+    rp_pio_log_size: u8,
+    trigger_enable: u8,
+    completion_control: bool,
+    interrupt_enable: bool,
+    err_cor_enable: bool,
+    software_trigger: bool,
+    trigger_status: bool,
+    trigger_reason: u8,
+    interrupt_status: bool,
+    reason_extension: bool,
+    error_source_id: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rp_pio_first_error_pointer: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rp_pio_status: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonTph {
+    no_st_mode: bool,
+    device_specific_mode: bool,
+    interrupt_vector_mode: bool,
+    st_table_location: u8,
+    st_table_size: u16,
+    st_mode_select: u8,
+    st_table: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonVendorExt {
+    vendor_id: String,
+    revision: u8,
+    length: u16,
+    data: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonDvsec {
+    vendor_id: String,
+    revision: u8,
+    dvsec_id: String,
+    length: u16,
+    data: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonVcResource {
+    capability: String,
+    control: String,
+    status: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonVc {
+    extended_vc_count: u8,
+    port_vc_capability: u8,
+    reference_clock: u8,
+    port_arbitration_table_entry_count: u8,
+    vc_arbitration_table_offset: u8,
+    vc_arbitration_table_entry_count: u8,
+    port_control: String,
+    port_status: String,
+    resources: Vec<JsonVcResource>,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonSecondaryPcie {
+    perform_equalization: bool,
+    equalization_request_interrupt: bool,
+    lane_equalization_control: String,
+}
+
 #[derive(Debug, Serialize)]
 struct JsonSlotId {
     slots: u8,
@@ -1145,6 +1371,125 @@ fn json_capability_content(content: &PciCapabilityContent) -> JsonCapabilityCont
             root_status: aer.root_status.map(|value| format!("0x{value:08x}")),
             error_source_id: aer.error_source_id.map(|value| format!("0x{value:08x}")),
         }),
+        PciCapabilityContent::Ltr(ltr) => JsonCapabilityContent::Ltr(JsonLtr {
+            snoop_value: ltr.snoop_value,
+            snoop_scale: ltr.snoop_scale,
+            no_snoop_value: ltr.no_snoop_value,
+            no_snoop_scale: ltr.no_snoop_scale,
+        }),
+        PciCapabilityContent::Ats(ats) => JsonCapabilityContent::Ats(JsonAts {
+            invalidate_queue_depth: ats.invalidate_queue_depth,
+            enable: ats.enable,
+            page_aligned: ats.page_aligned,
+            smallest_translation_unit: ats.smallest_translation_unit,
+        }),
+        PciCapabilityContent::Pri(pri) => JsonCapabilityContent::Pri(JsonPri {
+            enable: pri.enable,
+            reset: pri.reset,
+            response_failure: pri.response_failure,
+            unexpected_group_index: pri.unexpected_group_index,
+            stopped: pri.stopped,
+            outstanding_capacity: pri.outstanding_capacity,
+            outstanding_allocation: pri.outstanding_allocation,
+        }),
+        PciCapabilityContent::Pasid(pasid) => JsonCapabilityContent::Pasid(JsonPasid {
+            execute_supported: pasid.execute_supported,
+            privileged_supported: pasid.privileged_supported,
+            max_pasid_width: pasid.max_pasid_width,
+            enable: pasid.enable,
+            execute_enable: pasid.execute_enable,
+            privileged_enable: pasid.privileged_enable,
+        }),
+        PciCapabilityContent::Ptm(ptm) => JsonCapabilityContent::Ptm(JsonPtm {
+            root_capable: ptm.root_capable,
+            clock_capable: ptm.clock_capable,
+            enable: ptm.enable,
+            root_select: ptm.root_select,
+            granularity: ptm.granularity,
+        }),
+        PciCapabilityContent::Dpc(dpc) => JsonCapabilityContent::Dpc(JsonDpc {
+            interrupt_message_number: dpc.interrupt_message_number,
+            rp_pio_extensions: dpc.rp_pio_extensions,
+            rp_pio_log_size: dpc.rp_pio_log_size,
+            trigger_enable: dpc.trigger_enable,
+            completion_control: dpc.completion_control,
+            interrupt_enable: dpc.interrupt_enable,
+            err_cor_enable: dpc.err_cor_enable,
+            software_trigger: dpc.software_trigger,
+            trigger_status: dpc.trigger_status,
+            trigger_reason: dpc.trigger_reason,
+            interrupt_status: dpc.interrupt_status,
+            reason_extension: dpc.reason_extension,
+            error_source_id: format!("0x{:04x}", dpc.error_source_id),
+            rp_pio_first_error_pointer: dpc
+                .rp_pio_first_error_pointer
+                .map(|value| format!("0x{value:02x}")),
+            rp_pio_status: dpc.rp_pio_status.map(|value| format!("0x{value:08x}")),
+        }),
+        PciCapabilityContent::Tph(tph) => JsonCapabilityContent::Tph(JsonTph {
+            no_st_mode: tph.no_st_mode,
+            device_specific_mode: tph.device_specific_mode,
+            interrupt_vector_mode: tph.interrupt_vector_mode,
+            st_table_location: tph.st_table_location,
+            st_table_size: tph.st_table_size,
+            st_mode_select: tph.st_mode_select,
+            st_table: tph
+                .st_table
+                .iter()
+                .map(|entry| format!("0x{entry:04x}"))
+                .collect(),
+        }),
+        PciCapabilityContent::VendorExt(vendor_ext) => {
+            JsonCapabilityContent::VendorExt(JsonVendorExt {
+                vendor_id: format!("0x{:04x}", vendor_ext.vendor_id),
+                revision: vendor_ext.revision,
+                length: vendor_ext.length,
+                data: vendor_ext
+                    .data
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<Vec<_>>()
+                    .join(""),
+            })
+        }
+        PciCapabilityContent::Dvsec(dvsec) => JsonCapabilityContent::Dvsec(JsonDvsec {
+            vendor_id: format!("0x{:04x}", dvsec.vendor_id),
+            revision: dvsec.revision,
+            dvsec_id: format!("0x{:04x}", dvsec.dvsec_id),
+            length: dvsec.length,
+            data: dvsec
+                .data
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<Vec<_>>()
+                .join(""),
+        }),
+        PciCapabilityContent::Vc(vc) => JsonCapabilityContent::Vc(JsonVc {
+            extended_vc_count: vc.extended_vc_count,
+            port_vc_capability: vc.port_vc_capability,
+            reference_clock: vc.reference_clock,
+            port_arbitration_table_entry_count: vc.port_arbitration_table_entry_count,
+            vc_arbitration_table_offset: vc.vc_arbitration_table_offset,
+            vc_arbitration_table_entry_count: vc.vc_arbitration_table_entry_count,
+            port_control: format!("0x{:04x}", vc.port_control),
+            port_status: format!("0x{:04x}", vc.port_status),
+            resources: vc
+                .resources
+                .iter()
+                .map(|resource| JsonVcResource {
+                    capability: format!("0x{:08x}", resource.capability),
+                    control: format!("0x{:08x}", resource.control),
+                    status: format!("0x{:08x}", resource.status),
+                })
+                .collect(),
+        }),
+        PciCapabilityContent::SecondaryPcie(secondary) => {
+            JsonCapabilityContent::SecondaryPcie(JsonSecondaryPcie {
+                perform_equalization: secondary.perform_equalization,
+                equalization_request_interrupt: secondary.equalization_request_interrupt,
+                lane_equalization_control: format!("0x{:08x}", secondary.lane_equalization_control),
+            })
+        }
     }
 }
 
