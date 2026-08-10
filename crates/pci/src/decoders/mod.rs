@@ -10,7 +10,7 @@ pub use pcie::PcieCapability;
 pub use pm::PmCapability;
 pub use vendor::VendorSpecificCapability;
 
-use crate::{ConfigReadFailure, ConfigSpaceSnapshot};
+use crate::{ConfigReadFailure, ConfigSpaceSnapshot, PciCapability, PciCapabilityState};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PciCapabilityContent {
@@ -35,4 +35,21 @@ pub(crate) fn read_dword(
 ) -> Result<u32, ConfigReadFailure> {
     let bytes = snapshot.read(offset, 4)?;
     Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+}
+
+pub(crate) fn decode_content(snapshot: &ConfigSpaceSnapshot, capability: &mut PciCapability) {
+    if !matches!(capability.state, PciCapabilityState::Valid) {
+        return;
+    }
+
+    let offset = capability.offset;
+    capability.content = match capability.id {
+        0x01 => pm::decode_pm(snapshot, offset).map(PciCapabilityContent::Pm),
+        0x05 => msi::decode_msi(snapshot, offset).map(PciCapabilityContent::Msi),
+        0x09 => vendor::decode_vendor_specific(snapshot, offset)
+            .map(PciCapabilityContent::VendorSpecific),
+        0x10 => pcie::decode_pcie(snapshot, offset).map(PciCapabilityContent::Pcie),
+        0x11 => msix::decode_msix(snapshot, offset).map(PciCapabilityContent::MsiX),
+        _ => None,
+    };
 }

@@ -10,7 +10,8 @@ use pci_sys::bindings::{
 use crate::{
     ConfigReadLevel, ConfigSpaceReader, ConfigSpaceSnapshot, PciAddress, PciCapabilityChainStatus,
     PciCapabilityReport, PciDevice, PciDeviceDetails, PciError, PciField,
-    PciFieldUnavailableReason, PciResource, PciSnapshot, capability, details::PciInspection,
+    PciFieldUnavailableReason, PciResource, PciSnapshot, capability, decoders,
+    details::PciInspection,
 };
 
 /// all fields we would like to fill into pci_access using libpci
@@ -75,7 +76,15 @@ impl PciSession {
             let capabilities = {
                 let mut reader = ConfigSpaceReader::new(raw, 0x000..0x1000);
                 let header_readable = reader.read(0x000, 0x040).is_ok();
-                let report = capability::discover(&mut reader);
+                let mut report = capability::discover(&mut reader);
+
+                if header_readable {
+                    let snapshot = reader.snapshot();
+                    for capability in report.standard.iter_mut() {
+                        decoders::decode_content(snapshot, capability);
+                    }
+                }
+
                 Self::capabilities_from_report(report, header_readable)
             };
             let details = Self::details_from_raw(raw, known_fields, capabilities);
