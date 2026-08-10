@@ -11,11 +11,13 @@ fn main() {
         .header("wrapper.h")
         .allowlist_type("pci_access")
         .allowlist_type("pci_dev")
+        .allowlist_type("pci_cap")
         .allowlist_type("pci_lookup_mode")
         .allowlist_function(
-            "pci_(alloc|init|cleanup|scan_bus|fill_info|lookup_name|get_string_property)",
+            "pci_(alloc|init|cleanup|scan_bus|fill_info|lookup_name|get_string_property|find_cap|read_byte|read_word|read_long|read_block)",
         )
         .allowlist_var("PCI_FILL_.*")
+        .allowlist_var("PCI_CAP_.*")
         .allowlist_var("PCI_LOOKUP_VENDOR")
         .allowlist_var("PCI_LOOKUP_DEVICE")
         .allowlist_var("PCI_LOOKUP_CLASS")
