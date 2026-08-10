@@ -13,8 +13,8 @@ pub fn decode_slot_id(snapshot: &ConfigSpaceSnapshot, offset: u16) -> Option<Slo
     let chassis = snapshot.read(base + 3, 1).ok()?[0];
 
     Some(SlotIdCapability {
-        slots: slot & 0x7f,
-        first: slot & 0x80 != 0,
+        slots: slot & 0x1f,
+        first: slot & 0x20 != 0,
         chassis,
     })
 }

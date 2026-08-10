@@ -5,11 +5,9 @@ pub struct HotPlugCapability {
     pub hot_plug_capable: bool,
 }
 
-pub fn decode_hot_plug(snapshot: &ConfigSpaceSnapshot, offset: u16) -> Option<HotPlugCapability> {
-    let base = u32::from(offset);
-    let flags = snapshot.read(base + 2, 1).ok()?[0];
-
+pub fn decode_hot_plug(snapshot: &ConfigSpaceSnapshot, _offset: u16) -> Option<HotPlugCapability> {
+    // lspci treats the presence of this capability as sufficient evidence
     Some(HotPlugCapability {
-        hot_plug_capable: flags & 0x01 != 0,
+        hot_plug_capable: true,
     })
 }
