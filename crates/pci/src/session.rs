@@ -9,7 +9,7 @@ use pci_sys::bindings::{
 
 use crate::{
     ConfigReadLevel, ConfigSpaceReader, ConfigSpaceSnapshot, PciAddress, PciCapabilityChainStatus,
-    PciCapabilityReport, PciDevice, PciDeviceDetails, PciError, PciField,
+    PciCapabilityReport, PciCapabilityState, PciDevice, PciDeviceDetails, PciError, PciField,
     PciFieldUnavailableReason, PciResource, PciSnapshot, capability, decoders,
     details::PciInspection,
 };
@@ -79,6 +79,30 @@ impl PciSession {
                 let mut report = capability::discover(&mut reader);
 
                 if header_readable {
+                    for capability in report.standard.iter() {
+                        if matches!(capability.state, PciCapabilityState::Valid) {
+                            let start = u32::from(capability.offset);
+                            let end = (start + 0x40).min(0x100);
+                            let _ = reader.fetch(start, end - start);
+                        }
+                    }
+
+                    // vendor-specific payloads can exceed the 64-byte prefetch
+                    for capability in report.standard.iter() {
+                        if capability.id == 0x09
+                            && matches!(capability.state, PciCapabilityState::Valid)
+                        {
+                            let length_offset = u32::from(capability.offset) + 2;
+                            if let Ok(bytes) = reader.snapshot().read(length_offset, 1) {
+                                let start = u32::from(capability.offset) + 3;
+                                let end = (start + u32::from(bytes[0])).min(0x100);
+                                if end > start {
+                                    let _ = reader.fetch(start, end - start);
+                                }
+                            }
+                        }
+                    }
+
                     let snapshot = reader.snapshot();
                     for capability in report.standard.iter_mut() {
                         decoders::decode_content(snapshot, capability);
