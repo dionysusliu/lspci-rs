@@ -9,6 +9,7 @@ pub struct PciResource {
     pub start: u64,
     pub size: u64,
     pub flags: u64,
+    pub bar_type: Option<crate::PciBarType>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -22,6 +23,8 @@ pub struct PciDeviceDetails {
     pub driver: PciField<String>,
     pub resources: PciField<Vec<PciResource>>,
     pub capabilities: PciField<PciCapabilityReport>,
+    pub command: PciField<crate::CommandRegister>,
+    pub status: PciField<crate::StatusRegister>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

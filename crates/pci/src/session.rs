@@ -11,7 +11,7 @@ use crate::{
     ConfigReadLevel, ConfigSpaceReader, ConfigSpaceSnapshot, PciAddress, PciCapabilityChainStatus,
     PciCapabilityReport, PciCapabilityState, PciDevice, PciDeviceDetails, PciError, PciField,
     PciFieldUnavailableReason, PciResource, PciSnapshot, capability, decoders,
-    details::PciInspection,
+    details::PciInspection, header,
 };
 
 /// all fields we would like to fill into pci_access using libpci
@@ -73,56 +73,65 @@ impl PciSession {
             }
 
             let device = Self::device_from_raw(self.access, raw);
-            let capabilities = {
-                let mut reader = ConfigSpaceReader::new(raw, 0x000..0x1000);
-                let header_readable = reader.read(0x000, 0x040).is_ok();
-                let mut report = capability::discover(&mut reader);
+            let mut reader = ConfigSpaceReader::new(raw, 0x000..0x1000);
+            let header_readable = reader.read(0x000, 0x040).is_ok();
+            let mut report = capability::discover(&mut reader);
 
-                if header_readable {
-                    for capability in report.standard.iter() {
-                        if matches!(capability.state, PciCapabilityState::Valid) {
-                            let start = u32::from(capability.offset);
-                            let end = (start + 0x40).min(0x100);
-                            let _ = reader.fetch(start, end - start);
-                        }
-                    }
-
-                    for capability in report.extended.iter() {
-                        if matches!(capability.state, PciCapabilityState::Valid) {
-                            let start = u32::from(capability.offset);
-                            let end = (start + 0x60).min(0x1000);
-                            let _ = reader.fetch(start, end - start);
-                        }
-                    }
-
-                    // vendor-specific payloads can exceed the 64-byte prefetch
-                    for capability in report.standard.iter() {
-                        if capability.id == 0x09
-                            && matches!(capability.state, PciCapabilityState::Valid)
-                        {
-                            let length_offset = u32::from(capability.offset) + 2;
-                            if let Ok(bytes) = reader.snapshot().read(length_offset, 1) {
-                                let start = u32::from(capability.offset) + 3;
-                                let end = (start + u32::from(bytes[0])).min(0x100);
-                                if end > start {
-                                    let _ = reader.fetch(start, end - start);
-                                }
-                            }
-                        }
-                    }
-
-                    let snapshot = reader.snapshot();
-                    for capability in report.standard.iter_mut() {
-                        decoders::decode_content(snapshot, capability);
-                    }
-                    for capability in report.extended.iter_mut() {
-                        decoders::decode_content(snapshot, capability);
+            if header_readable {
+                for capability in report.standard.iter() {
+                    if matches!(capability.state, PciCapabilityState::Valid) {
+                        let start = u32::from(capability.offset);
+                        let end = (start + 0x40).min(0x100);
+                        let _ = reader.fetch(start, end - start);
                     }
                 }
 
-                Self::capabilities_from_report(report, header_readable)
-            };
-            let details = Self::details_from_raw(raw, known_fields, capabilities);
+                for capability in report.extended.iter() {
+                    if matches!(capability.state, PciCapabilityState::Valid) {
+                        let start = u32::from(capability.offset);
+                        let end = (start + 0x60).min(0x1000);
+                        let _ = reader.fetch(start, end - start);
+                    }
+                }
+
+                // vendor-specific payloads can exceed the 64-byte prefetch
+                for capability in report.standard.iter() {
+                    if capability.id == 0x09
+                        && matches!(capability.state, PciCapabilityState::Valid)
+                    {
+                        let length_offset = u32::from(capability.offset) + 2;
+                        if let Ok(bytes) = reader.snapshot().read(length_offset, 1) {
+                            let start = u32::from(capability.offset) + 3;
+                            let end = (start + u32::from(bytes[0])).min(0x100);
+                            if end > start {
+                                let _ = reader.fetch(start, end - start);
+                            }
+                        }
+                    }
+                }
+
+                let snapshot = reader.snapshot();
+                for capability in report.standard.iter_mut() {
+                    decoders::decode_content(snapshot, capability);
+                }
+                for capability in report.extended.iter_mut() {
+                    decoders::decode_content(snapshot, capability);
+                }
+            }
+
+            let capabilities = Self::capabilities_from_report(report, header_readable);
+            let mut details = Self::details_from_raw(raw, known_fields, capabilities);
+
+            if header_readable {
+                let snapshot = reader.snapshot();
+                details.command = header::command_field(snapshot);
+                details.status = header::status_field(snapshot);
+                if let PciField::Available(resources) = &mut details.resources {
+                    for resource in resources {
+                        resource.bar_type = header::bar_type_field(snapshot, resource.index);
+                    }
+                }
+            }
 
             Ok(PciInspection { device, details })
         }
@@ -287,6 +296,7 @@ impl PciSession {
                             start,
                             size,
                             flags,
+                            bar_type: None,
                         });
                     }
                 }
@@ -308,6 +318,12 @@ impl PciSession {
                 driver,
                 resources,
                 capabilities,
+                command: PciField::Unavailable {
+                    reason: PciFieldUnavailableReason::ReadError,
+                },
+                status: PciField::Unavailable {
+                    reason: PciFieldUnavailableReason::ReadError,
+                },
             }
         }
     }
