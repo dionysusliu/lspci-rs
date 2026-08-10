@@ -5,7 +5,7 @@ use clap::Parser;
 use cli::Cli;
 use pci::{PciAddress, PciSession};
 
-use crate::cli::{Command, OutputFormat};
+use crate::cli::{Command, ConfigLevel, OutputFormat};
 
 fn main() {
     let cli = Cli::parse();
@@ -19,7 +19,11 @@ fn main() {
             }
         },
 
-        Command::Show { address, format } => match run_show(address, format) {
+        Command::Show {
+            address,
+            config,
+            format,
+        } => match run_show(address, config, format) {
             Ok(output) => print!("{output}"),
             Err(error) => {
                 eprintln!("{error}");
@@ -41,13 +45,25 @@ fn run_list(format: OutputFormat) -> Result<String, Box<dyn std::error::Error>> 
 
 fn run_show(
     address: PciAddress,
+    config: Option<ConfigLevel>,
     format: OutputFormat,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let mut session = PciSession::new()?;
     let inspection = session.inspect(address)?;
 
+    let snapshot = match config {
+        Some(level) => Some(session.read_config(address, level.into())?),
+        None => None,
+    };
+
     match format {
-        OutputFormat::Text => Ok(output::render_inspection_text(&inspection)),
-        OutputFormat::Json => Ok(output::render_inspection_json(&inspection)?),
+        OutputFormat::Text => Ok(output::render_inspection_text(
+            &inspection,
+            snapshot.as_ref(),
+        )),
+        OutputFormat::Json => Ok(output::render_inspection_json(
+            &inspection,
+            snapshot.as_ref(),
+        )?),
     }
 }

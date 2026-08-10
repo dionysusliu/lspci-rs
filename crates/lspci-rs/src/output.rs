@@ -1,4 +1,7 @@
-use pci::{PciAddress, PciField, PciInspection, PciResource, PciSnapshot};
+use pci::{
+    ConfigSpaceSnapshot, PciAddress, PciCapability, PciCapabilityChainStatus, PciCapabilityKind,
+    PciCapabilityReport, PciField, PciInspection, PciResource, PciSnapshot,
+};
 use serde::Serialize;
 use std::fmt::{Display, LowerHex, Write as _};
 
@@ -94,7 +97,10 @@ pub fn render_json(snapshot: &PciSnapshot) -> Result<String, serde_json::Error> 
 }
 
 /// render PciInspection result to text
-pub fn render_inspection_text(inspection: &PciInspection) -> String {
+pub fn render_inspection_text(
+    inspection: &PciInspection,
+    config: Option<&ConfigSpaceSnapshot>,
+) -> String {
     let device = &inspection.device;
     let details = &inspection.details;
 
@@ -175,7 +181,106 @@ pub fn render_inspection_text(inspection: &PciInspection) -> String {
         }
     }
 
+    match &details.capabilities {
+        PciField::Available(report) => {
+            writeln!(output, "  capabilities:").unwrap();
+
+            render_capability_group_text(
+                &mut output,
+                "standard",
+                &report.standard,
+                &report.standard_status,
+            );
+            render_capability_group_text(
+                &mut output,
+                "extended",
+                &report.extended,
+                &report.extended_status,
+            );
+        }
+
+        PciField::Unavailable { reason } => {
+            writeln!(output, "  capabilities: <unavailable: {reason:?}>").unwrap();
+        }
+
+        PciField::NotApplicable => {
+            writeln!(output, "  capabilities: <not-applicable>").unwrap();
+        }
+    }
+
+    if let Some(snapshot) = config {
+        render_config_space_text(&mut output, snapshot);
+    }
+
     output
+}
+
+fn render_capability_group_text(
+    output: &mut String,
+    label: &str,
+    capabilities: &[PciCapability],
+    status: &PciCapabilityChainStatus,
+) {
+    writeln!(output, "    {label}: chain={}", render_chain_status(status)).unwrap();
+
+    for capability in capabilities {
+        writeln!(
+            output,
+            "      {} id=0x{:04x} offset=0x{:03x} next={} state={:?}",
+            render_capability_kind(&capability.kind),
+            capability.id,
+            capability.offset,
+            render_next_pointer(&capability.next),
+            capability.state
+        )
+        .unwrap();
+    }
+}
+
+fn render_next_pointer(next: &Option<u16>) -> String {
+    match next {
+        Some(next) => format!("0x{next:03x}"),
+        None => "none".to_owned(),
+    }
+}
+
+fn render_chain_status(status: &PciCapabilityChainStatus) -> String {
+    match status {
+        PciCapabilityChainStatus::NotPresent => "not-present".to_owned(),
+        PciCapabilityChainStatus::Complete => "complete".to_owned(),
+        PciCapabilityChainStatus::Truncated => "truncated".to_owned(),
+        PciCapabilityChainStatus::Unavailable(reason) => format!("unavailable: {reason:?}"),
+        PciCapabilityChainStatus::Malformed(reason) => format!("malformed: {reason:?}"),
+    }
+}
+
+fn render_config_space_text(output: &mut String, snapshot: &ConfigSpaceSnapshot) {
+    writeln!(output, "config-space:").unwrap();
+    writeln!(
+        output,
+        "  requested: 0x{:03x}..0x{:03x}",
+        snapshot.requested.start, snapshot.requested.end
+    )
+    .unwrap();
+
+    for segment in &snapshot.segments {
+        for (row_index, chunk) in segment.bytes.chunks(16).enumerate() {
+            let row_offset = segment.offset + (row_index as u32) * 16;
+            let bytes: Vec<String> = chunk.iter().map(|byte| format!("{byte:02x}")).collect();
+            writeln!(output, "  {row_offset:04x}: {}", bytes.join(" ")).unwrap();
+        }
+    }
+
+    for failure in &snapshot.failures {
+        writeln!(
+            output,
+            "  unavailable: 0x{:03x}..0x{:03x} <{:?}>",
+            failure.offset,
+            failure.offset + failure.length,
+            failure.reason
+        )
+        .unwrap();
+    }
 }
 
 /// render a PciField to text
@@ -201,7 +306,18 @@ fn render_hex_field<T: LowerHex>(field: &PciField<T>) -> String {
     }
 }
 
-pub fn render_inspection_json(inspection: &PciInspection) -> Result<String, serde_json::Error> {
+fn render_capability_kind(kind: &PciCapabilityKind) -> &'static str {
+    match kind {
+        PciCapabilityKind::Standard => "standard",
+        PciCapabilityKind::Extended => "extended",
+        PciCapabilityKind::Unknown(_) => "unknown",
+    }
+}
+
+pub fn render_inspection_json(
+    inspection: &PciInspection,
+    config: Option<&ConfigSpaceSnapshot>,
+) -> Result<String, serde_json::Error> {
     let device = &inspection.device;
     let details = &inspection.details;
 
@@ -231,7 +347,10 @@ pub fn render_inspection_json(inspection: &PciInspection) -> Result<String, serd
             irq: json_field(&details.irq),
             driver: json_field(&details.driver),
             resources: json_resources(&details.resources),
+            capabilities: json_capabilities(&details.capabilities),
         },
+
+        config: config.map(json_config_space),
     };
 
     serde_json::to_string_pretty(&json)
@@ -241,6 +360,9 @@ pub fn render_inspection_json(inspection: &PciInspection) -> Result<String, serd
 struct JsonInspection<'a> {
     device: JsonDevice<'a>,
     details: JsonDetails,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    config: Option<JsonConfigSpace>,
 }
 
 #[derive(Debug, Serialize)]
@@ -253,6 +375,7 @@ struct JsonDetails {
     irq: JsonField<u32>,
     driver: JsonField<String>,
     resources: JsonField<Vec<JsonResource>>,
+    capabilities: JsonField<JsonCapabilities>,
 }
 
 #[derive(Debug, Serialize)]
@@ -261,6 +384,52 @@ struct JsonResource {
     start: String,
     size: String,
     flags: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonCapabilities {
+    standard: Vec<JsonCapability>,
+    extended: Vec<JsonCapability>,
+    standard_status: String,
+    extended_status: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonCapability {
+    id: String,
+    kind: String,
+    offset: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    next: Option<String>,
+
+    state: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonConfigSpace {
+    requested: JsonRange,
+    segments: Vec<JsonConfigSegment>,
+    failures: Vec<JsonConfigFailure>,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonRange {
+    start: String,
+    end: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonConfigSegment {
+    offset: String,
+    bytes: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonConfigFailure {
+    offset: String,
+    length: String,
+    reason: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -287,7 +456,7 @@ fn json_field<T: Clone>(field: &PciField<T>) -> JsonField<T> {
             reason: Some(format!("{reason:?}")),
         },
         PciField::NotApplicable => JsonField {
-            state: "not_available",
+            state: "not_applicable",
             value: None,
             reason: None,
         },
@@ -307,7 +476,7 @@ fn json_hex_field<T: LowerHex>(field: &PciField<T>) -> JsonField<String> {
             reason: Some(format!("{reason:?}")),
         },
         PciField::NotApplicable => JsonField {
-            state: "not_available",
+            state: "not_applicable",
             value: None,
             reason: None,
         },
@@ -365,5 +534,85 @@ fn json_resources(field: &PciField<Vec<PciResource>>) -> JsonField<Vec<JsonResou
             value: None,
             reason: None,
         },
+    }
+}
+
+fn json_capabilities(field: &PciField<PciCapabilityReport>) -> JsonField<JsonCapabilities> {
+    match field {
+        PciField::Available(report) => JsonField {
+            state: "available",
+            value: Some(JsonCapabilities {
+                standard: json_capability_list(&report.standard),
+                extended: json_capability_list(&report.extended),
+                standard_status: json_chain_status(&report.standard_status),
+                extended_status: json_chain_status(&report.extended_status),
+            }),
+            reason: None,
+        },
+
+        PciField::Unavailable { reason } => JsonField {
+            state: "unavailable",
+            value: None,
+            reason: Some(format!("{reason:?}")),
+        },
+
+        PciField::NotApplicable => JsonField {
+            state: "not_applicable",
+            value: None,
+            reason: None,
+        },
+    }
+}
+
+fn json_capability_list(capabilities: &[PciCapability]) -> Vec<JsonCapability> {
+    capabilities
+        .iter()
+        .map(|capability| JsonCapability {
+            id: format!("0x{:04x}", capability.id),
+            kind: render_capability_kind(&capability.kind).to_owned(),
+            offset: format!("0x{:03x}", capability.offset),
+            next: capability.next.map(|next| format!("0x{next:03x}")),
+            state: format!("{:?}", capability.state),
+        })
+        .collect()
+}
+
+fn json_chain_status(status: &PciCapabilityChainStatus) -> String {
+    match status {
+        PciCapabilityChainStatus::NotPresent => "not_present".to_owned(),
+        PciCapabilityChainStatus::Complete => "complete".to_owned(),
+        PciCapabilityChainStatus::Truncated => "truncated".to_owned(),
+        PciCapabilityChainStatus::Unavailable(reason) => format!("unavailable: {reason:?}"),
+        PciCapabilityChainStatus::Malformed(reason) => format!("malformed: {reason:?}"),
+    }
+}
+
+fn json_config_space(snapshot: &ConfigSpaceSnapshot) -> JsonConfigSpace {
+    JsonConfigSpace {
+        requested: JsonRange {
+            start: format!("0x{:03x}", snapshot.requested.start),
+            end: format!("0x{:03x}", snapshot.requested.end),
+        },
+        segments: snapshot
+            .segments
+            .iter()
+            .map(|segment| JsonConfigSegment {
+                offset: format!("0x{:03x}", segment.offset),
+                bytes: segment
+                    .bytes
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect(),
+            })
+            .collect(),
+        failures: snapshot
+            .failures
+            .iter()
+            .map(|failure| JsonConfigFailure {
+                offset: format!("0x{:03x}", failure.offset),
+                length: format!("0x{:x}", failure.length),
+                reason: format!("{:?}", failure.reason),
+            })
+            .collect(),
     }
 }
