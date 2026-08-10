@@ -87,6 +87,14 @@ impl PciSession {
                         }
                     }
 
+                    for capability in report.extended.iter() {
+                        if matches!(capability.state, PciCapabilityState::Valid) {
+                            let start = u32::from(capability.offset);
+                            let end = (start + 0x40).min(0x1000);
+                            let _ = reader.fetch(start, end - start);
+                        }
+                    }
+
                     // vendor-specific payloads can exceed the 64-byte prefetch
                     for capability in report.standard.iter() {
                         if capability.id == 0x09
@@ -105,6 +113,9 @@ impl PciSession {
 
                     let snapshot = reader.snapshot();
                     for capability in report.standard.iter_mut() {
+                        decoders::decode_content(snapshot, capability);
+                    }
+                    for capability in report.extended.iter_mut() {
                         decoders::decode_content(snapshot, capability);
                     }
                 }
