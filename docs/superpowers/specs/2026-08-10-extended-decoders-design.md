@@ -68,7 +68,7 @@ cap+8 起 egress control vector（长度由 capability 位决定，可为 0）�
 寄存器（相对 cap base）：+0x04 dword capabilities、+0x08 word control、
 +0x0A word status、+0x0C initial VFs、+0x0E total VFs、+0x10 num VFs、
 +0x12 function dependency link、+0x14 VF device ID、
-+0x24..0x3C VF BAR0–5（6 个 dword）、+0x38/0x3C page size 相关。
++0x16 reserved、+0x18/0x1C Supported/System Page Size、+0x20..0x38 VF BAR0–5（6 个 dword）、+0x38/0x3C VF Migration State Array Offset/Size。
 字段与 lspci `SR-IOV: ... Initial VFs ..., Total VFs ..., NumVFs ..., VF Device ...` 对齐。
 
 ### AER (0x01) —— 全量展开（用户要求一步到位）
