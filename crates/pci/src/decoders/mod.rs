@@ -2,6 +2,7 @@ pub mod acs;
 pub mod aer;
 pub mod ari;
 pub mod ats;
+pub mod dpc;
 pub mod dsn;
 pub mod hot_plug;
 pub mod ltr;
@@ -15,6 +16,7 @@ pub mod pri;
 pub mod ptm;
 pub mod slot_id;
 pub mod sriov;
+pub mod tph;
 pub mod vendor;
 pub mod vpd;
 
@@ -22,6 +24,7 @@ pub use acs::AcsCapability;
 pub use aer::AerCapability;
 pub use ari::AriCapability;
 pub use ats::AtsCapability;
+pub use dpc::DpcCapability;
 pub use dsn::DsnCapability;
 pub use hot_plug::HotPlugCapability;
 pub use ltr::LtrCapability;
@@ -35,6 +38,7 @@ pub use pri::PriCapability;
 pub use ptm::PtmCapability;
 pub use slot_id::SlotIdCapability;
 pub use sriov::SriovCapability;
+pub use tph::TphCapability;
 pub use vendor::VendorSpecificCapability;
 pub use vpd::VpdCapability;
 
@@ -63,6 +67,8 @@ pub enum PciCapabilityContent {
     Pri(PriCapability),
     Pasid(PasidCapability),
     Ptm(PtmCapability),
+    Dpc(DpcCapability),
+    Tph(TphCapability),
 }
 
 pub(crate) fn read_word(
@@ -128,6 +134,12 @@ pub(crate) fn decode_content(snapshot: &ConfigSpaceSnapshot, capability: &mut Pc
         }
         (PciCapabilityKind::Extended, 0x10) => {
             sriov::decode_sriov(snapshot, offset).map(PciCapabilityContent::Sriov)
+        }
+        (PciCapabilityKind::Extended, 0x17) => {
+            tph::decode_tph(snapshot, offset).map(PciCapabilityContent::Tph)
+        }
+        (PciCapabilityKind::Extended, 0x1d) => {
+            dpc::decode_dpc(snapshot, offset).map(PciCapabilityContent::Dpc)
         }
         (PciCapabilityKind::Extended, 0x0f) => {
             ats::decode_ats(snapshot, offset).map(PciCapabilityContent::Ats)
