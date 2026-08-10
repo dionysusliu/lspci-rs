@@ -90,7 +90,7 @@ impl PciSession {
                     for capability in report.extended.iter() {
                         if matches!(capability.state, PciCapabilityState::Valid) {
                             let start = u32::from(capability.offset);
-                            let end = (start + 0x40).min(0x1000);
+                            let end = (start + 0x60).min(0x1000);
                             let _ = reader.fetch(start, end - start);
                         }
                     }
