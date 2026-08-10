@@ -10,12 +10,13 @@ pub struct SriovCapability {
     pub total_vfs: u16,
     pub num_vfs: u16,
     pub function_dependency_link: u16,
+    pub vf_offset: u16,
+    pub vf_stride: u16,
     pub vf_device_id: u16,
     pub supported_page_sizes: u32,
     pub system_page_size: u32,
     pub vf_bars: [u32; 6],
     pub migration_state_array_offset: u32,
-    pub migration_state_array_size: u32,
 }
 
 pub fn decode_sriov(snapshot: &ConfigSpaceSnapshot, offset: u16) -> Option<SriovCapability> {
@@ -28,17 +29,18 @@ pub fn decode_sriov(snapshot: &ConfigSpaceSnapshot, offset: u16) -> Option<Sriov
     let total_vfs = read_word(snapshot, base + 0x0e).ok()?;
     let num_vfs = read_word(snapshot, base + 0x10).ok()?;
     let function_dependency_link = read_word(snapshot, base + 0x12).ok()?;
-    let vf_device_id = read_word(snapshot, base + 0x14).ok()?;
-    let supported_page_sizes = read_dword(snapshot, base + 0x18).ok()?;
-    let system_page_size = read_dword(snapshot, base + 0x1c).ok()?;
+    let vf_offset = read_word(snapshot, base + 0x14).ok()?;
+    let vf_stride = read_word(snapshot, base + 0x16).ok()?;
+    let vf_device_id = read_word(snapshot, base + 0x1a).ok()?;
+    let supported_page_sizes = read_dword(snapshot, base + 0x1c).ok()?;
+    let system_page_size = read_dword(snapshot, base + 0x20).ok()?;
 
     let mut vf_bars = [0u32; 6];
     for (index, bar) in vf_bars.iter_mut().enumerate() {
-        *bar = read_dword(snapshot, base + 0x20 + (index as u32) * 4).ok()?;
+        *bar = read_dword(snapshot, base + 0x24 + (index as u32) * 4).ok()?;
     }
 
-    let migration_state_array_offset = read_dword(snapshot, base + 0x38).ok()?;
-    let migration_state_array_size = read_dword(snapshot, base + 0x3c).ok()?;
+    let migration_state_array_offset = read_dword(snapshot, base + 0x40).ok()?;
 
     Some(SriovCapability {
         capabilities,
@@ -48,11 +50,12 @@ pub fn decode_sriov(snapshot: &ConfigSpaceSnapshot, offset: u16) -> Option<Sriov
         total_vfs,
         num_vfs,
         function_dependency_link,
+        vf_offset,
+        vf_stride,
         vf_device_id,
         supported_page_sizes,
         system_page_size,
         vf_bars,
         migration_state_array_offset,
-        migration_state_array_size,
     })
 }

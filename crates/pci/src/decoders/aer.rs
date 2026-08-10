@@ -4,20 +4,20 @@ use crate::ConfigSpaceSnapshot;
 pub const AER_UE_BITS: &[(u8, &str)] = &[
     (4, "DLP"),
     (5, "SDES"),
-    (8, "TLP"),
-    (9, "FCP"),
-    (10, "CmpltTO"),
-    (11, "CmpltAbrt"),
-    (12, "UnxCmplt"),
-    (13, "RxOF"),
-    (14, "MalfTLP"),
-    (15, "ECRC"),
-    (16, "UnsupReq"),
-    (17, "ACSViol"),
-    (18, "UncorrIntErr"),
-    (19, "BlockedTLP"),
-    (20, "AtomicOpBlocked"),
-    (21, "TLPPrefixBlocked"),
+    (12, "TLP"),
+    (13, "FCP"),
+    (14, "CmpltTO"),
+    (15, "CmpltAbrt"),
+    (16, "UnxCmplt"),
+    (17, "RxOF"),
+    (18, "MalfTLP"),
+    (19, "ECRC"),
+    (20, "UnsupReq"),
+    (21, "ACSViol"),
+    (22, "UncorrIntErr"),
+    (23, "BlockedTLP"),
+    (24, "AtomicOpBlocked"),
+    (25, "TLPPrefixBlocked"),
 ];
 
 pub const AER_CE_BITS: &[(u8, &str)] = &[
@@ -45,7 +45,6 @@ pub struct AerCapability {
     pub root_command: Option<u32>,
     pub root_status: Option<u32>,
     pub error_source_id: Option<u32>,
-    pub tlp_prefix_log: [u32; 4],
 }
 
 pub fn decode_aer(snapshot: &ConfigSpaceSnapshot, offset: u16) -> Option<AerCapability> {
@@ -82,11 +81,6 @@ pub fn decode_aer(snapshot: &ConfigSpaceSnapshot, offset: u16) -> Option<AerCapa
         (None, None, None)
     };
 
-    let mut tlp_prefix_log = [0u32; 4];
-    for (index, entry) in tlp_prefix_log.iter_mut().enumerate() {
-        *entry = read_dword(snapshot, base + 0x38 + (index as u32) * 4).ok()?;
-    }
-
     Some(AerCapability {
         version,
         ue_status,
@@ -100,6 +94,5 @@ pub fn decode_aer(snapshot: &ConfigSpaceSnapshot, offset: u16) -> Option<AerCapa
         root_command,
         root_status,
         error_source_id,
-        tlp_prefix_log,
     })
 }

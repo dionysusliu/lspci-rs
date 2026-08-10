@@ -102,16 +102,16 @@ pub(crate) fn decode_content(snapshot: &ConfigSpaceSnapshot, capability: &mut Pc
         (PciCapabilityKind::Extended, 0x03) => {
             dsn::decode_dsn(snapshot, offset).map(PciCapabilityContent::Dsn)
         }
-        (PciCapabilityKind::Extended, 0x0a) => {
+        (PciCapabilityKind::Extended, 0x0d) => {
             acs::decode_acs(snapshot, offset).map(PciCapabilityContent::Acs)
         }
-        (PciCapabilityKind::Extended, 0x0b) => {
+        (PciCapabilityKind::Extended, 0x0e) => {
             ari::decode_ari(snapshot, offset).map(PciCapabilityContent::Ari)
         }
         (PciCapabilityKind::Extended, 0x01) => {
             aer::decode_aer(snapshot, offset).map(PciCapabilityContent::Aer)
         }
-        (PciCapabilityKind::Extended, 0x0d) => {
+        (PciCapabilityKind::Extended, 0x10) => {
             sriov::decode_sriov(snapshot, offset).map(PciCapabilityContent::Sriov)
         }
         _ => None,

@@ -323,6 +323,7 @@ fn render_capability_content(content: &PciCapabilityContent) -> String {
             let serial: Vec<String> = dsn
                 .serial
                 .iter()
+                .rev()
                 .map(|byte| format!("{byte:02x}"))
                 .collect();
             format!("serial={}", serial.join(":"))
@@ -344,8 +345,14 @@ fn render_capability_content(content: &PciCapabilityContent) -> String {
                 .join("")
         ),
         PciCapabilityContent::Sriov(sriov) => format!(
-            "initial_vfs={} total_vfs={} num_vfs={} vf_device_id=0x{:04x} control=0x{:04x}",
-            sriov.initial_vfs, sriov.total_vfs, sriov.num_vfs, sriov.vf_device_id, sriov.control
+            "initial_vfs={} total_vfs={} num_vfs={} vf_offset={} vf_stride={} vf_device_id=0x{:04x} control=0x{:04x}",
+            sriov.initial_vfs,
+            sriov.total_vfs,
+            sriov.num_vfs,
+            sriov.vf_offset,
+            sriov.vf_stride,
+            sriov.vf_device_id,
+            sriov.control
         ),
         PciCapabilityContent::Aer(aer) => render_aer_text(aer),
     }
@@ -394,11 +401,6 @@ fn render_aer_text(aer: &AerCapability) -> String {
         .iter()
         .map(|entry| format!("{entry:08x}"))
         .collect();
-    let tlp_log: Vec<String> = aer
-        .tlp_prefix_log
-        .iter()
-        .map(|entry| format!("{entry:08x}"))
-        .collect();
 
     let mut output = format!(
         "version={} first_error=0x{:02x}",
@@ -432,7 +434,6 @@ fn render_aer_text(aer: &AerCapability) -> String {
             "\n          RootCmd: 0x{command:08x} RootSta: 0x{status:08x} ErrSrc: 0x{source:08x}"
         ));
     }
-    output.push_str(&format!("\n          TLPLog: {}", tlp_log.join(" ")));
     output
 }
 
@@ -747,12 +748,13 @@ struct JsonSriov {
     total_vfs: u16,
     num_vfs: u16,
     function_dependency_link: u16,
+    vf_offset: u16,
+    vf_stride: u16,
     vf_device_id: String,
     supported_page_sizes: String,
     system_page_size: String,
     vf_bars: Vec<String>,
     migration_state_array_offset: String,
-    migration_state_array_size: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -780,8 +782,6 @@ struct JsonAer {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     error_source_id: Option<String>,
-
-    tlp_prefix_log: Vec<String>,
 }
 #[derive(Debug, Serialize)]
 struct JsonSlotId {
@@ -1082,6 +1082,7 @@ fn json_capability_content(content: &PciCapabilityContent) -> JsonCapabilityCont
             serial: dsn
                 .serial
                 .iter()
+                .rev()
                 .map(|byte| format!("{byte:02x}"))
                 .collect::<Vec<_>>()
                 .join(":"),
@@ -1109,6 +1110,8 @@ fn json_capability_content(content: &PciCapabilityContent) -> JsonCapabilityCont
             total_vfs: sriov.total_vfs,
             num_vfs: sriov.num_vfs,
             function_dependency_link: sriov.function_dependency_link,
+            vf_offset: sriov.vf_offset,
+            vf_stride: sriov.vf_stride,
             vf_device_id: format!("0x{:04x}", sriov.vf_device_id),
             supported_page_sizes: format!("0x{:08x}", sriov.supported_page_sizes),
             system_page_size: format!("0x{:08x}", sriov.system_page_size),
@@ -1118,7 +1121,6 @@ fn json_capability_content(content: &PciCapabilityContent) -> JsonCapabilityCont
                 .map(|bar| format!("0x{bar:08x}"))
                 .collect(),
             migration_state_array_offset: format!("0x{:08x}", sriov.migration_state_array_offset),
-            migration_state_array_size: format!("0x{:08x}", sriov.migration_state_array_size),
         }),
         PciCapabilityContent::Aer(aer) => JsonCapabilityContent::Aer(JsonAer {
             version: aer.version,
@@ -1142,11 +1144,6 @@ fn json_capability_content(content: &PciCapabilityContent) -> JsonCapabilityCont
             root_command: aer.root_command.map(|value| format!("0x{value:08x}")),
             root_status: aer.root_status.map(|value| format!("0x{value:08x}")),
             error_source_id: aer.error_source_id.map(|value| format!("0x{value:08x}")),
-            tlp_prefix_log: aer
-                .tlp_prefix_log
-                .iter()
-                .map(|entry| format!("{entry:08x}"))
-                .collect(),
         }),
     }
 }
