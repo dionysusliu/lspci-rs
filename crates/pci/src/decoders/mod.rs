@@ -1,10 +1,12 @@
 pub mod msi;
 pub mod msix;
+pub mod pcie;
 pub mod pm;
 pub mod vendor;
 
 pub use msi::MsiCapability;
 pub use msix::MsiXCapability;
+pub use pcie::PcieCapability;
 pub use pm::PmCapability;
 pub use vendor::VendorSpecificCapability;
 
@@ -15,6 +17,7 @@ pub enum PciCapabilityContent {
     Pm(PmCapability),
     Msi(MsiCapability),
     MsiX(MsiXCapability),
+    Pcie(PcieCapability),
     VendorSpecific(VendorSpecificCapability),
 }
 

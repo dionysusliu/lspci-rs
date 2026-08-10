@@ -10,7 +10,8 @@ mod session;
 pub(crate) use config::ConfigSpaceReader;
 pub use config::{ConfigReadFailure, ConfigReadLevel, ConfigSegment, ConfigSpaceSnapshot};
 pub use decoders::{
-    MsiCapability, MsiXCapability, PciCapabilityContent, PmCapability, VendorSpecificCapability,
+    MsiCapability, MsiXCapability, PciCapabilityContent, PcieCapability, PmCapability,
+    VendorSpecificCapability,
 };
 pub use details::{PciDeviceDetails, PciInspection, PciResource};
 pub use device::{PciAddress, PciAddressParseError, PciDevice, PciSnapshot};
