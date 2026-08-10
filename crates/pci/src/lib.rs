@@ -5,6 +5,7 @@ mod details;
 mod device;
 mod error;
 mod field;
+mod header;
 mod names;
 mod session;
 
@@ -25,5 +26,6 @@ pub use field::{
     PciCapability, PciCapabilityChainStatus, PciCapabilityKind, PciCapabilityMalformedReason,
     PciCapabilityReport, PciCapabilityState, PciField, PciFieldUnavailableReason,
 };
+pub use header::{CommandRegister, PciBarKind, PciBarType, StatusRegister};
 pub use names::capability_name;
 pub use session::PciSession;
