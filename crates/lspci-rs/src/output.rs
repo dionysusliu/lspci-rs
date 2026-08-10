@@ -1,7 +1,7 @@
 use pci::{
-    ConfigSpaceSnapshot, PciAddress, PciCapability, PciCapabilityChainStatus, PciCapabilityContent,
-    PciCapabilityKind, PciCapabilityReport, PciField, PciInspection, PciResource, PciSnapshot,
-    capability_name,
+    AER_CE_BITS, AER_UE_BITS, AerCapability, ConfigSpaceSnapshot, PciAddress, PciCapability,
+    PciCapabilityChainStatus, PciCapabilityContent, PciCapabilityKind, PciCapabilityReport,
+    PciField, PciInspection, PciResource, PciSnapshot, capability_name,
 };
 use serde::Serialize;
 use std::fmt::{Display, LowerHex, Write as _};
@@ -319,6 +319,35 @@ fn render_capability_content(content: &PciCapabilityContent) -> String {
                 .collect();
             format!("len={} data={}", vendor.length, data.join(" "))
         }
+        PciCapabilityContent::Dsn(dsn) => {
+            let serial: Vec<String> = dsn
+                .serial
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect();
+            format!("serial={}", serial.join(":"))
+        }
+        PciCapabilityContent::Ari(ari) => format!(
+            "capability=0x{:04x} control=0x{:04x} next_fn=0x{:02x}",
+            ari.capability,
+            ari.control,
+            (ari.capability >> 8) & 0x00ff
+        ),
+        PciCapabilityContent::Acs(acs) => format!(
+            "capability=0x{:04x} control=0x{:04x} egress_vector={}",
+            acs.capability,
+            acs.control,
+            acs.egress_vector
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<Vec<_>>()
+                .join("")
+        ),
+        PciCapabilityContent::Sriov(sriov) => format!(
+            "initial_vfs={} total_vfs={} num_vfs={} vf_device_id=0x{:04x} control=0x{:04x}",
+            sriov.initial_vfs, sriov.total_vfs, sriov.num_vfs, sriov.vf_device_id, sriov.control
+        ),
+        PciCapabilityContent::Aer(aer) => render_aer_text(aer),
     }
 }
 
@@ -347,6 +376,64 @@ fn render_pcie_speed(speed: u8) -> &'static str {
         6 => "64.0",
         _ => "?",
     }
+}
+
+fn aer_flag_text(value: u32, bits: &[(u8, &str)]) -> String {
+    bits.iter()
+        .map(|(bit, name)| {
+            let flag = if value & (1u32 << bit) != 0 { "+" } else { "-" };
+            format!("{name}{flag}")
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn render_aer_text(aer: &AerCapability) -> String {
+    let header_log: Vec<String> = aer
+        .header_log
+        .iter()
+        .map(|entry| format!("{entry:08x}"))
+        .collect();
+    let tlp_log: Vec<String> = aer
+        .tlp_prefix_log
+        .iter()
+        .map(|entry| format!("{entry:08x}"))
+        .collect();
+
+    let mut output = format!(
+        "version={} first_error=0x{:02x}",
+        aer.version, aer.first_error_pointer
+    );
+    output.push_str(&format!(
+        "\n          UESta: {}",
+        aer_flag_text(aer.ue_status, AER_UE_BITS)
+    ));
+    output.push_str(&format!(
+        "\n          UEMsk: {}",
+        aer_flag_text(aer.ue_mask, AER_UE_BITS)
+    ));
+    output.push_str(&format!(
+        "\n          UESvrt: {}",
+        aer_flag_text(aer.ue_severity, AER_UE_BITS)
+    ));
+    output.push_str(&format!(
+        "\n          CESta: {}",
+        aer_flag_text(aer.ce_status, AER_CE_BITS)
+    ));
+    output.push_str(&format!(
+        "\n          CEMsk: {}",
+        aer_flag_text(aer.ce_mask, AER_CE_BITS)
+    ));
+    output.push_str(&format!("\n          HeaderLog: {}", header_log.join(" ")));
+    if let (Some(command), Some(status), Some(source)) =
+        (aer.root_command, aer.root_status, aer.error_source_id)
+    {
+        output.push_str(&format!(
+            "\n          RootCmd: 0x{command:08x} RootSta: 0x{status:08x} ErrSrc: 0x{source:08x}"
+        ));
+    }
+    output.push_str(&format!("\n          TLPLog: {}", tlp_log.join(" ")));
+    output
 }
 
 fn render_next_pointer(next: &Option<u16>) -> String {
@@ -535,6 +622,16 @@ enum JsonCapabilityContent {
     Pcie(JsonPcie),
     #[serde(rename = "vendor_specific")]
     VendorSpecific(JsonVendorSpecific),
+    #[serde(rename = "dsn")]
+    Dsn(JsonDsn),
+    #[serde(rename = "ari")]
+    Ari(JsonAri),
+    #[serde(rename = "acs")]
+    Acs(JsonAcs),
+    #[serde(rename = "sr_iov")]
+    Sriov(JsonSriov),
+    #[serde(rename = "aer")]
+    Aer(JsonAer),
     #[serde(rename = "slot_id")]
     SlotId(JsonSlotId),
     #[serde(rename = "hot_plug")]
@@ -620,6 +717,71 @@ struct JsonPcie {
 struct JsonVendorSpecific {
     length: u8,
     data: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonDsn {
+    serial: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonAri {
+    capability: String,
+    control: String,
+    next_fn: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonAcs {
+    capability: String,
+    control: String,
+    egress_vector: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonSriov {
+    capabilities: String,
+    control: String,
+    status: String,
+    initial_vfs: u16,
+    total_vfs: u16,
+    num_vfs: u16,
+    function_dependency_link: u16,
+    vf_device_id: String,
+    supported_page_sizes: String,
+    system_page_size: String,
+    vf_bars: Vec<String>,
+    migration_state_array_offset: String,
+    migration_state_array_size: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonAer {
+    version: u8,
+    first_error_pointer: String,
+    ue_status: String,
+    ue_status_bits: Vec<String>,
+    ue_mask: String,
+    ue_mask_bits: Vec<String>,
+    ue_severity: String,
+    ue_severity_bits: Vec<String>,
+    ce_status: String,
+    ce_status_bits: Vec<String>,
+    ce_mask: String,
+    ce_mask_bits: Vec<String>,
+    capabilities_control: String,
+    header_log: Vec<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    root_command: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    root_status: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error_source_id: Option<String>,
+
+    tlp_prefix_log: Vec<String>,
 }
 #[derive(Debug, Serialize)]
 struct JsonSlotId {
@@ -916,7 +1078,84 @@ fn json_capability_content(content: &PciCapabilityContent) -> JsonCapabilityCont
                     .join(" "),
             })
         }
+        PciCapabilityContent::Dsn(dsn) => JsonCapabilityContent::Dsn(JsonDsn {
+            serial: dsn
+                .serial
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<Vec<_>>()
+                .join(":"),
+        }),
+        PciCapabilityContent::Ari(ari) => JsonCapabilityContent::Ari(JsonAri {
+            capability: format!("0x{:04x}", ari.capability),
+            control: format!("0x{:04x}", ari.control),
+            next_fn: format!("0x{:02x}", (ari.capability >> 8) & 0x00ff),
+        }),
+        PciCapabilityContent::Acs(acs) => JsonCapabilityContent::Acs(JsonAcs {
+            capability: format!("0x{:04x}", acs.capability),
+            control: format!("0x{:04x}", acs.control),
+            egress_vector: acs
+                .egress_vector
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<Vec<_>>()
+                .join(""),
+        }),
+        PciCapabilityContent::Sriov(sriov) => JsonCapabilityContent::Sriov(JsonSriov {
+            capabilities: format!("0x{:08x}", sriov.capabilities),
+            control: format!("0x{:04x}", sriov.control),
+            status: format!("0x{:04x}", sriov.status),
+            initial_vfs: sriov.initial_vfs,
+            total_vfs: sriov.total_vfs,
+            num_vfs: sriov.num_vfs,
+            function_dependency_link: sriov.function_dependency_link,
+            vf_device_id: format!("0x{:04x}", sriov.vf_device_id),
+            supported_page_sizes: format!("0x{:08x}", sriov.supported_page_sizes),
+            system_page_size: format!("0x{:08x}", sriov.system_page_size),
+            vf_bars: sriov
+                .vf_bars
+                .iter()
+                .map(|bar| format!("0x{bar:08x}"))
+                .collect(),
+            migration_state_array_offset: format!("0x{:08x}", sriov.migration_state_array_offset),
+            migration_state_array_size: format!("0x{:08x}", sriov.migration_state_array_size),
+        }),
+        PciCapabilityContent::Aer(aer) => JsonCapabilityContent::Aer(JsonAer {
+            version: aer.version,
+            first_error_pointer: format!("0x{:02x}", aer.first_error_pointer),
+            ue_status: format!("0x{:08x}", aer.ue_status),
+            ue_status_bits: aer_flag_bit_names(aer.ue_status, AER_UE_BITS),
+            ue_mask: format!("0x{:08x}", aer.ue_mask),
+            ue_mask_bits: aer_flag_bit_names(aer.ue_mask, AER_UE_BITS),
+            ue_severity: format!("0x{:08x}", aer.ue_severity),
+            ue_severity_bits: aer_flag_bit_names(aer.ue_severity, AER_UE_BITS),
+            ce_status: format!("0x{:08x}", aer.ce_status),
+            ce_status_bits: aer_flag_bit_names(aer.ce_status, AER_CE_BITS),
+            ce_mask: format!("0x{:08x}", aer.ce_mask),
+            ce_mask_bits: aer_flag_bit_names(aer.ce_mask, AER_CE_BITS),
+            capabilities_control: format!("0x{:08x}", aer.capabilities_control),
+            header_log: aer
+                .header_log
+                .iter()
+                .map(|entry| format!("{entry:08x}"))
+                .collect(),
+            root_command: aer.root_command.map(|value| format!("0x{value:08x}")),
+            root_status: aer.root_status.map(|value| format!("0x{value:08x}")),
+            error_source_id: aer.error_source_id.map(|value| format!("0x{value:08x}")),
+            tlp_prefix_log: aer
+                .tlp_prefix_log
+                .iter()
+                .map(|entry| format!("{entry:08x}"))
+                .collect(),
+        }),
     }
+}
+
+fn aer_flag_bit_names(value: u32, bits: &[(u8, &str)]) -> Vec<String> {
+    bits.iter()
+        .filter(|(bit, _)| value & (1u32 << bit) != 0)
+        .map(|(_, name)| (*name).to_owned())
+        .collect()
 }
 
 fn json_chain_status(status: &PciCapabilityChainStatus) -> String {
