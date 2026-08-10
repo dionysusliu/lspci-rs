@@ -12,9 +12,9 @@ pub(crate) use config::ConfigSpaceReader;
 pub use config::{ConfigReadFailure, ConfigReadLevel, ConfigSegment, ConfigSpaceSnapshot};
 pub use decoders::aer::{AER_CE_BITS, AER_UE_BITS};
 pub use decoders::{
-    AcsCapability, AriCapability, DsnCapability, HotPlugCapability, MsiCapability, MsiXCapability,
-    PciCapabilityContent, PciXCapability, PcieCapability, PmCapability, SlotIdCapability,
-    VendorSpecificCapability, VpdCapability,
+    AcsCapability, AerCapability, AriCapability, DsnCapability, HotPlugCapability, MsiCapability,
+    MsiXCapability, PciCapabilityContent, PciXCapability, PcieCapability, PmCapability,
+    SlotIdCapability, SriovCapability, VendorSpecificCapability, VpdCapability,
 };
 pub use details::{PciDeviceDetails, PciInspection, PciResource};
 pub use device::{PciAddress, PciAddressParseError, PciDevice, PciSnapshot};
