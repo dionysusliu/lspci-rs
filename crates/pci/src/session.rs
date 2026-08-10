@@ -126,6 +126,27 @@ impl PciSession {
                 let snapshot = reader.snapshot();
                 details.command = header::command_field(snapshot);
                 details.status = header::status_field(snapshot);
+                details.cache_line_size = header::cache_line_size_field(snapshot);
+                details.latency_timer = header::latency_timer_field(snapshot);
+                details.header_type = header::header_type_field(snapshot);
+                details.bist = header::bist_field(snapshot);
+                details.interrupt_line = header::interrupt_line_field(snapshot);
+                details.interrupt_pin = header::interrupt_pin_field(snapshot);
+
+                let header_kind = match &details.header_type {
+                    PciField::Available(header_type) => Some(&header_type.kind),
+                    _ => None,
+                };
+                let is_bridge = matches!(header_kind, Some(PciHeaderKind::Bridge));
+                let is_cardbus = matches!(header_kind, Some(PciHeaderKind::CardBus));
+
+                details.expansion_rom = header::expansion_rom_field(snapshot, is_bridge);
+                if is_bridge {
+                    details.bridge = header::bridge_header_field(snapshot);
+                }
+                if is_cardbus {
+                    details.cardbus_cis_pointer = header::cardbus_cis_field(snapshot);
+                }
                 if let PciField::Available(resources) = &mut details.resources {
                     for resource in resources {
                         resource.bar_type = header::bar_type_field(snapshot, resource.index);
@@ -324,6 +345,29 @@ impl PciSession {
                 status: PciField::Unavailable {
                     reason: PciFieldUnavailableReason::ReadError,
                 },
+                cache_line_size: PciField::Unavailable {
+                    reason: PciFieldUnavailableReason::ReadError,
+                },
+                latency_timer: PciField::Unavailable {
+                    reason: PciFieldUnavailableReason::ReadError,
+                },
+                header_type: PciField::Unavailable {
+                    reason: PciFieldUnavailableReason::ReadError,
+                },
+                bist: PciField::Unavailable {
+                    reason: PciFieldUnavailableReason::ReadError,
+                },
+                expansion_rom: PciField::Unavailable {
+                    reason: PciFieldUnavailableReason::ReadError,
+                },
+                interrupt_line: PciField::Unavailable {
+                    reason: PciFieldUnavailableReason::ReadError,
+                },
+                interrupt_pin: PciField::Unavailable {
+                    reason: PciFieldUnavailableReason::ReadError,
+                },
+                cardbus_cis_pointer: PciField::NotApplicable,
+                bridge: PciField::NotApplicable,
             }
         }
     }
