@@ -1,3 +1,6 @@
+pub mod acs;
+pub mod ari;
+pub mod dsn;
 pub mod hot_plug;
 pub mod msi;
 pub mod msix;
@@ -8,6 +11,9 @@ pub mod slot_id;
 pub mod vendor;
 pub mod vpd;
 
+pub use acs::AcsCapability;
+pub use ari::AriCapability;
+pub use dsn::DsnCapability;
 pub use hot_plug::HotPlugCapability;
 pub use msi::MsiCapability;
 pub use msix::MsiXCapability;
@@ -33,6 +39,9 @@ pub enum PciCapabilityContent {
     HotPlug(HotPlugCapability),
     Vpd(VpdCapability),
     PciX(PciXCapability),
+    Dsn(DsnCapability),
+    Ari(AriCapability),
+    Acs(AcsCapability),
 }
 
 pub(crate) fn read_word(
@@ -83,6 +92,15 @@ pub(crate) fn decode_content(snapshot: &ConfigSpaceSnapshot, capability: &mut Pc
         }
         (PciCapabilityKind::Standard, 0x11) => {
             msix::decode_msix(snapshot, offset).map(PciCapabilityContent::MsiX)
+        }
+        (PciCapabilityKind::Extended, 0x03) => {
+            dsn::decode_dsn(snapshot, offset).map(PciCapabilityContent::Dsn)
+        }
+        (PciCapabilityKind::Extended, 0x0a) => {
+            acs::decode_acs(snapshot, offset).map(PciCapabilityContent::Acs)
+        }
+        (PciCapabilityKind::Extended, 0x0b) => {
+            ari::decode_ari(snapshot, offset).map(PciCapabilityContent::Ari)
         }
         _ => None,
     };
