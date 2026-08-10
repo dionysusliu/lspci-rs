@@ -1,6 +1,7 @@
 use pci::{
     ConfigSpaceSnapshot, PciAddress, PciCapability, PciCapabilityChainStatus, PciCapabilityContent,
     PciCapabilityKind, PciCapabilityReport, PciField, PciInspection, PciResource, PciSnapshot,
+    capability_name,
 };
 use serde::Serialize;
 use std::fmt::{Display, LowerHex, Write as _};
@@ -227,7 +228,7 @@ fn render_capability_group_text(
         writeln!(
             output,
             "      {} id=0x{:04x} offset=0x{:03x} next={} state={:?}",
-            render_capability_kind(&capability.kind),
+            capability_name(&capability.kind, capability.id),
             capability.id,
             capability.offset,
             render_next_pointer(&capability.next),
@@ -508,6 +509,7 @@ struct JsonCapabilities {
 #[derive(Debug, Serialize)]
 struct JsonCapability {
     id: String,
+    name: String,
     kind: String,
     offset: String,
 
@@ -813,6 +815,7 @@ fn json_capability_list(capabilities: &[PciCapability]) -> Vec<JsonCapability> {
         .iter()
         .map(|capability| JsonCapability {
             id: format!("0x{:04x}", capability.id),
+            name: capability_name(&capability.kind, capability.id).to_owned(),
             kind: render_capability_kind(&capability.kind).to_owned(),
             offset: format!("0x{:03x}", capability.offset),
             next: capability.next.map(|next| format!("0x{next:03x}")),

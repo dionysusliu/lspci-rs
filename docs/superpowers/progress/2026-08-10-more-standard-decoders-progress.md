@@ -16,6 +16,7 @@
 | Task 1 | `a324dc2` | VPD / Slot ID / PCI-X / Hot-Plug decoder + 枚举变体 + 分发 |
 | Task 2 | `e2c5c3e` | text/JSON 渲染四个新变体 |
 | 真机修正 | `d973e96` | Slot ID 位布局与 Hot-Plug 语义按 dev48 证据修正 |
+| 名称映射 | （本次提交） | capability ID → 协议名（text 前缀 + JSON name 字段） |
 
 ## 真机验证中发现并修复的问题
 
@@ -27,6 +28,17 @@ dev48 `0000:00:1f.0`（QEMU PCI-PCI bridge）对照发现两处偏差：
    lspci 以 capability 存在本身为据，不读标志位；decoder 改为同语义。
 
 这正是坚持真机对照的价值——两个错误都无法靠静态审查发现。
+
+## 补充：capability 名称映射
+
+用户对照 lspci 后提出：节点行应显示协议名而非仅链类型。已实现
+`capability_name(kind, id)`（标准 0x01–0x13 全表 + 常见扩展 ID，
+未知 ID 显示 unknown）：
+
+- text 节点行前缀由 `standard`/`extended` 改为协议名
+  （msi / slot-id / hot-plug / pcie / msi-x / vendor-specific ...）
+- JSON capability 对象增加 `name` 字段
+- dev48 已验证（00:1f.0 与 00:04.0）
 
 ## dev48 真机验证结果（2026-08-10）
 
@@ -53,3 +65,4 @@ JSON 输出确认：`content.type` 为 `slot_id` / `hot_plug`，字段形态符�
 2. B 切片（扩展 capability decoder：AER/SR-IOV/ARI/ACS 等）：
    验证环境已确认为 sg-232e-224 物理机（Ice Lake，扩展空间 4096 字节
    完整可读，网卡 3d:00.0 具备 AER/DSN/ARI/SR-IOV/TPH/ACS，免密 sudo）。
+   名称表已提前覆盖这些扩展 ID。

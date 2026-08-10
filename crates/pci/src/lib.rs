@@ -5,6 +5,7 @@ mod details;
 mod device;
 mod error;
 mod field;
+mod names;
 mod session;
 
 pub(crate) use config::ConfigSpaceReader;
@@ -20,4 +21,5 @@ pub use field::{
     PciCapability, PciCapabilityChainStatus, PciCapabilityKind, PciCapabilityMalformedReason,
     PciCapabilityReport, PciCapabilityState, PciField, PciFieldUnavailableReason,
 };
+pub use names::capability_name;
 pub use session::PciSession;
