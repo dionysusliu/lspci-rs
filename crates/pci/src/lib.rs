@@ -13,10 +13,10 @@ pub use config::{ConfigReadFailure, ConfigReadLevel, ConfigSegment, ConfigSpaceS
 pub use decoders::aer::{AER_CE_BITS, AER_UE_BITS};
 pub use decoders::{
     AcsCapability, AerCapability, AriCapability, AtsCapability, DpcCapability, DsnCapability,
-    HotPlugCapability, LtrCapability, MsiCapability, MsiXCapability, PasidCapability,
-    PciCapabilityContent, PciXCapability, PcieCapability, PmCapability, PriCapability,
-    PtmCapability, SlotIdCapability, SriovCapability, TphCapability, VendorSpecificCapability,
-    VpdCapability,
+    DvsecCapability, HotPlugCapability, LtrCapability, MsiCapability, MsiXCapability,
+    PasidCapability, PciCapabilityContent, PciXCapability, PcieCapability, PmCapability,
+    PriCapability, PtmCapability, SlotIdCapability, SriovCapability, TphCapability,
+    VendorExtCapability, VendorSpecificCapability, VpdCapability,
 };
 pub use details::{PciDeviceDetails, PciInspection, PciResource};
 pub use device::{PciAddress, PciAddressParseError, PciDevice, PciSnapshot};
