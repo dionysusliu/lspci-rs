@@ -646,6 +646,14 @@ fn pcie_aspm_control(aspm: u8) -> &'static str {
     }
 }
 
+fn pcie_retimer_text(presence: u8) -> &'static str {
+    match presence {
+        1 => "Retimer+",
+        2 => "2Retimers+",
+        _ => "Retimer-",
+    }
+}
+
 fn pcie_flag(enabled: bool) -> &'static str {
     if enabled { "+" } else { "-" }
 }
@@ -717,7 +725,7 @@ fn render_pcie_text(pcie: &PcieCapability) -> String {
     let speed_note = if speed_downgraded {
         " (downgraded)"
     } else {
-        " (ok)"
+        ""
     };
     let width_note = if width_downgraded {
         " (downgraded)"
@@ -832,9 +840,10 @@ fn render_pcie_text(pcie: &PcieCapability) -> String {
         &pcie.lnk_sta2,
     ) {
         output.push_str(&format!(
-            "\n          DevCap2: Completion Timeout: {:02x}, TimeoutDis{} ARI{} AtomicOpsRouting{} LTR{} 10BitTagComp{} 10BitTagReq{} OBFF {} ExtFmt{} EETLPPrefix{}",
+            "\n          DevCap2: Completion Timeout: {:02x}, TimeoutDis{} NROPrPrP{} ARI{} AtomicOpsRouting{} LTR{} 10BitTagComp{} 10BitTagReq{} OBFF {} ExtFmt{} EETLPPrefix{}",
             dev_cap2.completion_timeout_ranges,
             pcie_flag(dev_cap2.completion_timeout_disable),
+            pcie_flag(dev_cap2.no_ro_pr_pr_passing),
             pcie_flag(dev_cap2.ari),
             pcie_flag(dev_cap2.atomic_op_routing),
             pcie_flag(dev_cap2.ltr),
@@ -851,9 +860,10 @@ fn render_pcie_text(pcie: &PcieCapability) -> String {
             pcie_flag(dev_cap2.atomic_128_cas)
         ));
         output.push_str(&format!(
-            "\n          DevCtl2: Completion Timeout: {:02x}, TimeoutDis{} LTR{} 10BitTagReq{} OBFF {}",
+            "\n          DevCtl2: Completion Timeout: {:02x}, TimeoutDis{} ARI{} LTR{} 10BitTagReq{} OBFF {}",
             dev_ctl2.completion_timeout,
             pcie_flag(dev_ctl2.completion_timeout_disable),
+            pcie_flag(dev_ctl2.ari),
             pcie_flag(dev_ctl2.ltr),
             pcie_flag(dev_ctl2.ten_bit_tag_requester),
             dev_ctl2.obff
@@ -870,14 +880,14 @@ fn render_pcie_text(pcie: &PcieCapability) -> String {
             pcie_flag(lnk_ctl2.compliance_sos)
         ));
         output.push_str(&format!(
-            "\n          LnkSta2: Current De-emphasis: {}, EqualizationComplete{} EqualizationPhase1{} EqualizationPhase2{} EqualizationPhase3{} LinkEqualizationRequest{} Retimer{}",
-            if lnk_sta2.current_de_emphasis { "-6dB" } else { "-3.5dB" },
+            "\n          LnkSta2: Current De-emphasis: {}, EqualizationComplete{} EqualizationPhase1{} EqualizationPhase2{} EqualizationPhase3{} LinkEqualizationRequest{} {}",
+            if lnk_sta2.current_de_emphasis { "-3.5dB" } else { "-6dB" },
             pcie_flag(lnk_sta2.equalization_complete),
             pcie_flag(lnk_sta2.equalization_phase1),
             pcie_flag(lnk_sta2.equalization_phase2),
             pcie_flag(lnk_sta2.equalization_phase3),
             pcie_flag(lnk_sta2.equalization_request),
-            lnk_sta2.retimer_presence
+            pcie_retimer_text(lnk_sta2.retimer_presence)
         ));
     }
 
