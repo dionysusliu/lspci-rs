@@ -82,7 +82,7 @@ decoder 不接触 FFI。给 `ConfigSpaceSnapshot` 增加纯函数读取方法：
 
 ```rust
 impl ConfigSpaceSnapshot {
-    pub fn read(&self, offset: u32, length: u32) -> Result<Vec<u8>, ConfigReadError>;
+    pub fn read(&self, offset: u32, length: u32) -> Result<Vec<u8>, ConfigReadFailure>;
 }
 ```
 
