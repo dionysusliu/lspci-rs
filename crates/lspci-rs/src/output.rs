@@ -288,6 +288,28 @@ fn render_capability_content(content: &PciCapabilityContent) -> String {
             pcie.link_current_width,
             pcie.link_training
         ),
+        PciCapabilityContent::SlotId(slot_id) => format!(
+            "slots={} first={} chassis=0x{:02x}",
+            slot_id.slots, slot_id.first, slot_id.chassis
+        ),
+        PciCapabilityContent::HotPlug(hot_plug) => {
+            format!("hot_plug_capable={}", hot_plug.hot_plug_capable)
+        }
+        PciCapabilityContent::Vpd(vpd) => format!(
+            "flag={} address=0x{:04x} data=0x{:04x}",
+            vpd.address_flag, vpd.address, vpd.data
+        ),
+        PciCapabilityContent::PciX(pci_x) => format!(
+            "parity_recovery={} relaxed_ordering={} max_mem_block={} max_split={} bus=0x{:02x} device={} function={} status=0x{:08x}",
+            pci_x.parity_error_recovery,
+            pci_x.relaxed_ordering,
+            pci_x.max_memory_block,
+            pci_x.max_split,
+            pci_x.bus,
+            pci_x.device,
+            pci_x.function,
+            pci_x.status_raw
+        ),
         PciCapabilityContent::VendorSpecific(vendor) => {
             let data: Vec<String> = vendor
                 .data
@@ -511,6 +533,14 @@ enum JsonCapabilityContent {
     Pcie(JsonPcie),
     #[serde(rename = "vendor_specific")]
     VendorSpecific(JsonVendorSpecific),
+    #[serde(rename = "slot_id")]
+    SlotId(JsonSlotId),
+    #[serde(rename = "hot_plug")]
+    HotPlug(JsonHotPlug),
+    #[serde(rename = "vpd")]
+    Vpd(JsonVpd),
+    #[serde(rename = "pci_x")]
+    PciX(JsonPciX),
 }
 
 #[derive(Debug, Serialize)]
@@ -588,6 +618,36 @@ struct JsonPcie {
 struct JsonVendorSpecific {
     length: u8,
     data: String,
+}
+#[derive(Debug, Serialize)]
+struct JsonSlotId {
+    slots: u8,
+    first: bool,
+    chassis: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonHotPlug {
+    hot_plug_capable: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonVpd {
+    address_flag: bool,
+    address: String,
+    data: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPciX {
+    parity_error_recovery: bool,
+    relaxed_ordering: bool,
+    max_memory_block: u8,
+    max_split: u8,
+    bus: String,
+    device: u8,
+    function: u8,
+    status_raw: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -818,6 +878,29 @@ fn json_capability_content(content: &PciCapabilityContent) -> JsonCapabilityCont
             slot_sta: pcie.slot_sta.map(|value| format!("0x{value:04x}")),
             root_ctl: pcie.root_ctl.map(|value| format!("0x{value:04x}")),
             root_sta: pcie.root_sta.map(|value| format!("0x{value:08x}")),
+        }),
+        PciCapabilityContent::SlotId(slot_id) => JsonCapabilityContent::SlotId(JsonSlotId {
+            slots: slot_id.slots,
+            first: slot_id.first,
+            chassis: format!("0x{:02x}", slot_id.chassis),
+        }),
+        PciCapabilityContent::HotPlug(hot_plug) => JsonCapabilityContent::HotPlug(JsonHotPlug {
+            hot_plug_capable: hot_plug.hot_plug_capable,
+        }),
+        PciCapabilityContent::Vpd(vpd) => JsonCapabilityContent::Vpd(JsonVpd {
+            address_flag: vpd.address_flag,
+            address: format!("0x{:04x}", vpd.address),
+            data: format!("0x{:04x}", vpd.data),
+        }),
+        PciCapabilityContent::PciX(pci_x) => JsonCapabilityContent::PciX(JsonPciX {
+            parity_error_recovery: pci_x.parity_error_recovery,
+            relaxed_ordering: pci_x.relaxed_ordering,
+            max_memory_block: pci_x.max_memory_block,
+            max_split: pci_x.max_split,
+            bus: format!("0x{:02x}", pci_x.bus),
+            device: pci_x.device,
+            function: pci_x.function,
+            status_raw: format!("0x{:08x}", pci_x.status_raw),
         }),
         PciCapabilityContent::VendorSpecific(vendor) => {
             JsonCapabilityContent::VendorSpecific(JsonVendorSpecific {
