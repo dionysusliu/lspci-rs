@@ -49,6 +49,57 @@ impl ConfigSpaceSnapshot {
             failures: Vec::new(),
         }
     }
+
+    pub fn read(&self, offset: u32, length: u32) -> Result<Vec<u8>, ConfigReadFailure> {
+        let end = match offset.checked_add(length) {
+            Some(end) if length != 0 => end,
+            _ => return Err(self.missing_failure(offset, length)),
+        };
+
+        let mut bytes = Vec::with_capacity(length as usize);
+        let mut cursor = offset;
+
+        while cursor < end {
+            let segment = match self.segment_covering(cursor) {
+                Some(segment) => segment,
+                None => return Err(self.missing_failure(offset, length)),
+            };
+
+            let segment_end = segment_end(segment);
+            let take_end = segment_end.min(end);
+            let start = (cursor - segment.offset) as usize;
+            let len = (take_end - cursor) as usize;
+            bytes.extend_from_slice(&segment.bytes[start..start + len]);
+            cursor = take_end;
+        }
+
+        Ok(bytes)
+    }
+
+    fn missing_failure(&self, offset: u32, length: u32) -> ConfigReadFailure {
+        ConfigReadFailure {
+            offset,
+            length,
+            reason: PciFieldUnavailableReason::ReadError,
+        }
+    }
+
+    fn segment_covering(&self, offset: u32) -> Option<&ConfigSegment> {
+        self.segments
+            .iter()
+            .find(|segment| segment.offset <= offset && offset < segment_end(segment))
+    }
+
+    fn covering_segment_end(&self, offset: u32) -> Option<u32> {
+        self.segment_covering(offset).map(segment_end)
+    }
+
+    fn next_segment_start(&self, offset: u32) -> Option<u32> {
+        self.segments
+            .iter()
+            .find(|segment| segment.offset > offset)
+            .map(|segment| segment.offset)
+    }
 }
 
 pub(crate) struct ConfigSpaceReader {
@@ -104,30 +155,7 @@ impl ConfigSpaceReader {
 
     pub(crate) fn read(&mut self, offset: u32, length: u32) -> Result<Vec<u8>, ConfigReadFailure> {
         self.fetch(offset, length)?;
-
-        let end = match offset.checked_add(length) {
-            Some(end) if length != 0 => end,
-            _ => return Err(self.record_failure(offset, length)),
-        };
-
-        let mut bytes = Vec::with_capacity(length as usize);
-        let mut cursor = offset;
-
-        while cursor < end {
-            let segment = match self.segment_covering(cursor) {
-                Some(segment) => segment,
-                None => return Err(self.failure_for_range(offset, length)),
-            };
-
-            let segment_end = segment_end(segment);
-            let take_end = segment_end.min(end);
-            let start = (cursor - segment.offset) as usize;
-            let len = (take_end - cursor) as usize;
-            bytes.extend_from_slice(&segment.bytes[start..start + len]);
-            cursor = take_end;
-        }
-
-        Ok(bytes)
+        self.snapshot.read(offset, length)
     }
 
     fn read_range(&mut self, offset: u32, length: u32) -> Result<(), ConfigReadFailure> {
@@ -202,23 +230,12 @@ impl ConfigSpaceReader {
         self.snapshot.segments = merged;
     }
 
-    fn segment_covering(&self, offset: u32) -> Option<&ConfigSegment> {
-        self.snapshot
-            .segments
-            .iter()
-            .find(|segment| segment.offset <= offset && offset < segment_end(segment))
-    }
-
     fn covering_segment_end(&self, offset: u32) -> Option<u32> {
-        self.segment_covering(offset).map(segment_end)
+        self.snapshot.covering_segment_end(offset)
     }
 
     fn next_segment_start(&self, offset: u32) -> Option<u32> {
-        self.snapshot
-            .segments
-            .iter()
-            .find(|segment| segment.offset > offset)
-            .map(|segment| segment.offset)
+        self.snapshot.next_segment_start(offset)
     }
 
     fn record_failure(&mut self, offset: u32, length: u32) -> ConfigReadFailure {
@@ -229,23 +246,6 @@ impl ConfigSpaceReader {
         };
         self.snapshot.failures.push(failure.clone());
         failure
-    }
-
-    fn failure_for_range(&self, offset: u32, length: u32) -> ConfigReadFailure {
-        self.snapshot
-            .failures
-            .iter()
-            .find(|failure| {
-                let failure_end = failure.offset.saturating_add(failure.length);
-                let range_end = offset.saturating_add(length);
-                failure.offset < range_end && offset < failure_end
-            })
-            .cloned()
-            .unwrap_or(ConfigReadFailure {
-                offset,
-                length,
-                reason: PciFieldUnavailableReason::ReadError,
-            })
     }
 }
 

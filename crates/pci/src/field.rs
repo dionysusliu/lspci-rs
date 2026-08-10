@@ -64,4 +64,5 @@ pub struct PciCapability {
     pub offset: u16,
     pub next: Option<u16>,
     pub state: PciCapabilityState,
+    pub content: Option<crate::PciCapabilityContent>,
 }

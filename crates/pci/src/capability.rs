@@ -171,6 +171,7 @@ fn walk_chain(
             offset: current,
             next,
             state: PciCapabilityState::Valid,
+            content: None,
         };
 
         capabilities.push(node);
