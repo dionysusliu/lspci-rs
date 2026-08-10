@@ -1,13 +1,18 @@
 pub mod acs;
 pub mod aer;
 pub mod ari;
+pub mod ats;
 pub mod dsn;
 pub mod hot_plug;
+pub mod ltr;
 pub mod msi;
 pub mod msix;
+pub mod pasid;
 pub mod pci_x;
 pub mod pcie;
 pub mod pm;
+pub mod pri;
+pub mod ptm;
 pub mod slot_id;
 pub mod sriov;
 pub mod vendor;
@@ -16,13 +21,18 @@ pub mod vpd;
 pub use acs::AcsCapability;
 pub use aer::AerCapability;
 pub use ari::AriCapability;
+pub use ats::AtsCapability;
 pub use dsn::DsnCapability;
 pub use hot_plug::HotPlugCapability;
+pub use ltr::LtrCapability;
 pub use msi::MsiCapability;
 pub use msix::MsiXCapability;
+pub use pasid::PasidCapability;
 pub use pci_x::PciXCapability;
 pub use pcie::PcieCapability;
 pub use pm::PmCapability;
+pub use pri::PriCapability;
+pub use ptm::PtmCapability;
 pub use slot_id::SlotIdCapability;
 pub use sriov::SriovCapability;
 pub use vendor::VendorSpecificCapability;
@@ -48,6 +58,11 @@ pub enum PciCapabilityContent {
     Acs(AcsCapability),
     Sriov(SriovCapability),
     Aer(AerCapability),
+    Ltr(LtrCapability),
+    Ats(AtsCapability),
+    Pri(PriCapability),
+    Pasid(PasidCapability),
+    Ptm(PtmCapability),
 }
 
 pub(crate) fn read_word(
@@ -113,6 +128,21 @@ pub(crate) fn decode_content(snapshot: &ConfigSpaceSnapshot, capability: &mut Pc
         }
         (PciCapabilityKind::Extended, 0x10) => {
             sriov::decode_sriov(snapshot, offset).map(PciCapabilityContent::Sriov)
+        }
+        (PciCapabilityKind::Extended, 0x0f) => {
+            ats::decode_ats(snapshot, offset).map(PciCapabilityContent::Ats)
+        }
+        (PciCapabilityKind::Extended, 0x13) => {
+            pri::decode_pri(snapshot, offset).map(PciCapabilityContent::Pri)
+        }
+        (PciCapabilityKind::Extended, 0x18) => {
+            ltr::decode_ltr(snapshot, offset).map(PciCapabilityContent::Ltr)
+        }
+        (PciCapabilityKind::Extended, 0x1b) => {
+            pasid::decode_pasid(snapshot, offset).map(PciCapabilityContent::Pasid)
+        }
+        (PciCapabilityKind::Extended, 0x1f) => {
+            ptm::decode_ptm(snapshot, offset).map(PciCapabilityContent::Ptm)
         }
         _ => None,
     };
