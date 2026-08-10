@@ -8,8 +8,9 @@ use pci_sys::bindings::{
 };
 
 use crate::{
-    PciAddress, PciDevice, PciDeviceDetails, PciError, PciField, PciResource, PciSnapshot,
-    details::PciInspection,
+    ConfigReadLevel, ConfigSpaceReader, ConfigSpaceSnapshot, PciAddress, PciCapabilityChainStatus,
+    PciCapabilityReport, PciDevice, PciDeviceDetails, PciError, PciField,
+    PciFieldUnavailableReason, PciResource, PciSnapshot, capability, details::PciInspection,
 };
 
 /// all fields we would like to fill into pci_access using libpci
@@ -48,41 +49,69 @@ impl PciSession {
     }
 
     pub fn inspect(&mut self, address: PciAddress) -> Result<PciInspection, PciError> {
+        let raw = unsafe { self.find_raw_device(address)? };
+
+        unsafe {
+            let result = pci_fill_info(raw, INSPECT_FIELDS as std::os::raw::c_int);
+
+            if result < 0 {
+                return Err(PciError::DeviceInfo {
+                    address,
+                    known_fields: result as u32,
+                    requested_fields: INSPECT_FIELDS,
+                });
+            }
+
+            let known_fields = result as u32;
+            if known_fields & REQUIRED_INSPECT_FIELDS != REQUIRED_INSPECT_FIELDS {
+                return Err(PciError::DeviceInfo {
+                    address,
+                    known_fields,
+                    requested_fields: REQUIRED_INSPECT_FIELDS,
+                });
+            }
+
+            let device = Self::device_from_raw(self.access, raw);
+            let capabilities = {
+                let mut reader = ConfigSpaceReader::new(raw, 0x000..0x1000);
+                let report = capability::discover(&mut reader);
+                Self::capabilities_from_report(report)
+            };
+            let details = Self::details_from_raw(raw, known_fields, capabilities);
+
+            Ok(PciInspection { device, details })
+        }
+    }
+
+    pub fn read_config(
+        &mut self,
+        address: PciAddress,
+        level: ConfigReadLevel,
+    ) -> Result<ConfigSpaceSnapshot, PciError> {
+        let raw = unsafe { self.find_raw_device(address)? };
+        let requested = level.range();
+        let length = requested.end - requested.start;
+
+        unsafe {
+            let mut reader = ConfigSpaceReader::new(raw, requested.clone());
+            let _ = reader.fetch(requested.start, length);
+            Ok(reader.snapshot().clone())
+        }
+    }
+
+    /// helper function: find raw libpci device matching the address
+    unsafe fn find_raw_device(
+        &mut self,
+        address: PciAddress,
+    ) -> Result<*mut pci_sys::bindings::pci_dev, PciError> {
         unsafe {
             pci_scan_bus(self.access);
 
             let mut raw = (*self.access).devices;
 
             while !raw.is_null() {
-                // 更新libpci的设备链表
-                let raw_address = Self::address_from_raw(raw);
-
-                if raw_address == address {
-                    // 填充详细设备信息
-                    let result = pci_fill_info(raw, INSPECT_FIELDS as std::os::raw::c_int);
-
-                    // 决定字段是否可用
-                    if result < 0 {
-                        return Err(PciError::DeviceInfo {
-                            address,
-                            known_fields: result as u32,
-                            requested_fields: INSPECT_FIELDS,
-                        });
-                    }
-
-                    let known_fields = result as u32;
-                    if known_fields & REQUIRED_INSPECT_FIELDS != REQUIRED_INSPECT_FIELDS {
-                        return Err(PciError::DeviceInfo {
-                            address,
-                            known_fields,
-                            requested_fields: REQUIRED_INSPECT_FIELDS,
-                        });
-                    }
-
-                    let device = Self::device_from_raw(self.access, raw);
-                    let details = Self::details_from_raw(raw, known_fields);
-
-                    return Ok(PciInspection { device, details });
+                if Self::address_from_raw(raw) == address {
+                    return Ok(raw);
                 }
 
                 raw = (*raw).next;
@@ -131,6 +160,7 @@ impl PciSession {
     unsafe fn details_from_raw(
         raw: *mut pci_sys::bindings::pci_dev,
         known_fields: u32,
+        capabilities: PciField<PciCapabilityReport>,
     ) -> PciDeviceDetails {
         unsafe {
             let revision = if known_fields & PCI_FILL_CLASS_EXT != 0 {
@@ -232,7 +262,25 @@ impl PciSession {
                 irq,
                 driver,
                 resources,
+                capabilities,
             }
+        }
+    }
+
+    fn capabilities_from_report(report: PciCapabilityReport) -> PciField<PciCapabilityReport> {
+        if matches!(
+            report.standard_status,
+            PciCapabilityChainStatus::Unavailable(_)
+        ) {
+            PciField::Unavailable {
+                reason: PciFieldUnavailableReason::ReadError,
+            }
+        } else if matches!(report.standard_status, PciCapabilityChainStatus::NotPresent)
+            && matches!(report.extended_status, PciCapabilityChainStatus::NotPresent)
+        {
+            PciField::NotApplicable
+        } else {
+            PciField::Available(report)
         }
     }
 
@@ -317,8 +365,7 @@ impl PciSession {
         let mut buffer = [0 as std::os::raw::c_char; 256];
 
         let flags = (pci_sys::bindings::pci_lookup_mode_PCI_LOOKUP_DEVICE
-            | pci_sys::bindings::pci_lookup_mode_PCI_LOOKUP_NO_NUMBERS)
-            as std::os::raw::c_int;
+            | pci_lookup_mode_PCI_LOOKUP_NO_NUMBERS) as std::os::raw::c_int;
 
         let result = unsafe {
             pci_sys::bindings::pci_lookup_name(
@@ -338,8 +385,7 @@ impl PciSession {
         let mut buffer = [0 as std::os::raw::c_char; 256];
 
         let flags = (pci_sys::bindings::pci_lookup_mode_PCI_LOOKUP_CLASS
-            | pci_sys::bindings::pci_lookup_mode_PCI_LOOKUP_NO_NUMBERS)
-            as std::os::raw::c_int;
+            | pci_lookup_mode_PCI_LOOKUP_NO_NUMBERS) as std::os::raw::c_int;
 
         let result = unsafe {
             pci_sys::bindings::pci_lookup_name(
