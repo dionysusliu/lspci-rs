@@ -1,4 +1,5 @@
 pub mod acs;
+pub mod aer;
 pub mod ari;
 pub mod dsn;
 pub mod hot_plug;
@@ -8,10 +9,12 @@ pub mod pci_x;
 pub mod pcie;
 pub mod pm;
 pub mod slot_id;
+pub mod sriov;
 pub mod vendor;
 pub mod vpd;
 
 pub use acs::AcsCapability;
+pub use aer::AerCapability;
 pub use ari::AriCapability;
 pub use dsn::DsnCapability;
 pub use hot_plug::HotPlugCapability;
@@ -21,6 +24,7 @@ pub use pci_x::PciXCapability;
 pub use pcie::PcieCapability;
 pub use pm::PmCapability;
 pub use slot_id::SlotIdCapability;
+pub use sriov::SriovCapability;
 pub use vendor::VendorSpecificCapability;
 pub use vpd::VpdCapability;
 
@@ -42,6 +46,8 @@ pub enum PciCapabilityContent {
     Dsn(DsnCapability),
     Ari(AriCapability),
     Acs(AcsCapability),
+    Sriov(SriovCapability),
+    Aer(AerCapability),
 }
 
 pub(crate) fn read_word(
@@ -101,6 +107,12 @@ pub(crate) fn decode_content(snapshot: &ConfigSpaceSnapshot, capability: &mut Pc
         }
         (PciCapabilityKind::Extended, 0x0b) => {
             ari::decode_ari(snapshot, offset).map(PciCapabilityContent::Ari)
+        }
+        (PciCapabilityKind::Extended, 0x01) => {
+            aer::decode_aer(snapshot, offset).map(PciCapabilityContent::Aer)
+        }
+        (PciCapabilityKind::Extended, 0x0d) => {
+            sriov::decode_sriov(snapshot, offset).map(PciCapabilityContent::Sriov)
         }
         _ => None,
     };
