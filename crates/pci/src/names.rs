@@ -63,6 +63,7 @@ fn extended_name(id: u16) -> &'static str {
         0x001d => "dpc",
         0x001e => "l1-pm-substates",
         0x001f => "ptm",
+        0x0023 => "dvsec",
         0x0026 => "phys-16gt",
         0x0027 => "lane-margining",
         _ => "unknown",

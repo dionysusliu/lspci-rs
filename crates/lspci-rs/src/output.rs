@@ -375,24 +375,32 @@ fn render_capability_content(content: &PciCapabilityContent) -> String {
             pasid.enable
         ),
         PciCapabilityContent::Ptm(ptm) => format!(
-            "root_capable={} clock_capable={} enable={} root_select={} granularity={}",
-            ptm.root_capable, ptm.clock_capable, ptm.enable, ptm.root_select, ptm.granularity
+            "requester={} responder={} root={} granularity={}ns enable={} root_select={}",
+            ptm.requester_capable,
+            ptm.responder_capable,
+            ptm.root_capable,
+            ptm.clock_granularity,
+            ptm.enable,
+            ptm.root_select
         ),
         PciCapabilityContent::Dpc(dpc) => format!(
-            "trigger_enable={} trigger_status={} reason={} interrupt_enable={} source=0x{:04x}",
+            "trigger_enable={} trigger_status={} reason={} interrupt_enable={} rp_busy={} err_ptr={} source=0x{:04x}",
             dpc.trigger_enable,
             dpc.trigger_status,
             dpc.trigger_reason,
             dpc.interrupt_enable,
+            dpc.rp_busy,
+            dpc.rp_pio_error_pointer,
             dpc.error_source_id
         ),
         PciCapabilityContent::Tph(tph) => format!(
-            "location={} size={} mode_select={} no_st={} device_specific={}",
+            "device_specific={} interrupt_vector={} extended_requester={} location={} size={} mode_select={}",
+            tph.device_specific_supported,
+            tph.interrupt_vector_supported,
+            tph.extended_requester_supported,
             tph.st_table_location,
             tph.st_table_size,
-            tph.st_mode_select,
-            tph.no_st_mode,
-            tph.device_specific_mode
+            tph.st_mode_select
         ),
         PciCapabilityContent::VendorExt(vendor_ext) => format!(
             "vendor=0x{:04x} rev={} len={} data={}",
@@ -420,9 +428,11 @@ fn render_capability_content(content: &PciCapabilityContent) -> String {
                 .join("")
         ),
         PciCapabilityContent::Vc(vc) => format!(
-            "vc_count={} ref_clock={} port_control=0x{:04x} port_status=0x{:04x} resources={}",
-            vc.extended_vc_count,
+            "lpevc={} evc_count={} ref_clock={} pat_entry_bits={} port_control=0x{:04x} port_status=0x{:04x} resources={}",
+            vc.lpevc,
+            vc.evc_count,
             vc.reference_clock,
+            vc.pat_entry_bits,
             vc.port_control,
             vc.port_status,
             vc.resources.len()
@@ -924,27 +934,35 @@ struct JsonPasid {
 
 #[derive(Debug, Serialize)]
 struct JsonPtm {
+    requester_capable: bool,
+    responder_capable: bool,
     root_capable: bool,
-    clock_capable: bool,
+    clock_granularity: u8,
     enable: bool,
     root_select: bool,
-    granularity: u8,
 }
 
 #[derive(Debug, Serialize)]
 struct JsonDpc {
     interrupt_message_number: u8,
     rp_pio_extensions: bool,
+    poisoned_tlp_blocking_capable: bool,
+    software_trigger_capable: bool,
     rp_pio_log_size: u8,
+    dl_active_error_capable: bool,
     trigger_enable: u8,
     completion_control: bool,
     interrupt_enable: bool,
     err_cor_enable: bool,
+    poisoned_tlp_blocking_enable: bool,
     software_trigger: bool,
+    dl_active_error_enable: bool,
     trigger_status: bool,
     trigger_reason: u8,
     interrupt_status: bool,
-    reason_extension: bool,
+    rp_busy: bool,
+    trigger_extension: u8,
+    rp_pio_error_pointer: u8,
     error_source_id: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -956,9 +974,9 @@ struct JsonDpc {
 
 #[derive(Debug, Serialize)]
 struct JsonTph {
-    no_st_mode: bool,
-    device_specific_mode: bool,
-    interrupt_vector_mode: bool,
+    interrupt_vector_supported: bool,
+    device_specific_supported: bool,
+    extended_requester_supported: bool,
     st_table_location: u8,
     st_table_size: u16,
     st_mode_select: u8,
@@ -984,19 +1002,18 @@ struct JsonDvsec {
 
 #[derive(Debug, Serialize)]
 struct JsonVcResource {
-    capability: String,
     control: String,
     status: String,
+    capability: String,
 }
 
 #[derive(Debug, Serialize)]
 struct JsonVc {
-    extended_vc_count: u8,
-    port_vc_capability: u8,
+    evc_count: u8,
+    lpevc: u8,
     reference_clock: u8,
-    port_arbitration_table_entry_count: u8,
-    vc_arbitration_table_offset: u8,
-    vc_arbitration_table_entry_count: u8,
+    pat_entry_bits: u8,
+    arbitration_table_position: u8,
     port_control: String,
     port_status: String,
     resources: Vec<JsonVcResource>,
@@ -1401,25 +1418,33 @@ fn json_capability_content(content: &PciCapabilityContent) -> JsonCapabilityCont
             privileged_enable: pasid.privileged_enable,
         }),
         PciCapabilityContent::Ptm(ptm) => JsonCapabilityContent::Ptm(JsonPtm {
+            requester_capable: ptm.requester_capable,
+            responder_capable: ptm.responder_capable,
             root_capable: ptm.root_capable,
-            clock_capable: ptm.clock_capable,
+            clock_granularity: ptm.clock_granularity,
             enable: ptm.enable,
             root_select: ptm.root_select,
-            granularity: ptm.granularity,
         }),
         PciCapabilityContent::Dpc(dpc) => JsonCapabilityContent::Dpc(JsonDpc {
             interrupt_message_number: dpc.interrupt_message_number,
             rp_pio_extensions: dpc.rp_pio_extensions,
+            poisoned_tlp_blocking_capable: dpc.poisoned_tlp_blocking_capable,
+            software_trigger_capable: dpc.software_trigger_capable,
             rp_pio_log_size: dpc.rp_pio_log_size,
+            dl_active_error_capable: dpc.dl_active_error_capable,
             trigger_enable: dpc.trigger_enable,
             completion_control: dpc.completion_control,
             interrupt_enable: dpc.interrupt_enable,
             err_cor_enable: dpc.err_cor_enable,
+            poisoned_tlp_blocking_enable: dpc.poisoned_tlp_blocking_enable,
             software_trigger: dpc.software_trigger,
+            dl_active_error_enable: dpc.dl_active_error_enable,
             trigger_status: dpc.trigger_status,
             trigger_reason: dpc.trigger_reason,
             interrupt_status: dpc.interrupt_status,
-            reason_extension: dpc.reason_extension,
+            rp_busy: dpc.rp_busy,
+            trigger_extension: dpc.trigger_extension,
+            rp_pio_error_pointer: dpc.rp_pio_error_pointer,
             error_source_id: format!("0x{:04x}", dpc.error_source_id),
             rp_pio_first_error_pointer: dpc
                 .rp_pio_first_error_pointer
@@ -1427,9 +1452,9 @@ fn json_capability_content(content: &PciCapabilityContent) -> JsonCapabilityCont
             rp_pio_status: dpc.rp_pio_status.map(|value| format!("0x{value:08x}")),
         }),
         PciCapabilityContent::Tph(tph) => JsonCapabilityContent::Tph(JsonTph {
-            no_st_mode: tph.no_st_mode,
-            device_specific_mode: tph.device_specific_mode,
-            interrupt_vector_mode: tph.interrupt_vector_mode,
+            interrupt_vector_supported: tph.interrupt_vector_supported,
+            device_specific_supported: tph.device_specific_supported,
+            extended_requester_supported: tph.extended_requester_supported,
             st_table_location: tph.st_table_location,
             st_table_size: tph.st_table_size,
             st_mode_select: tph.st_mode_select,
@@ -1465,21 +1490,20 @@ fn json_capability_content(content: &PciCapabilityContent) -> JsonCapabilityCont
                 .join(""),
         }),
         PciCapabilityContent::Vc(vc) => JsonCapabilityContent::Vc(JsonVc {
-            extended_vc_count: vc.extended_vc_count,
-            port_vc_capability: vc.port_vc_capability,
+            evc_count: vc.evc_count,
+            lpevc: vc.lpevc,
             reference_clock: vc.reference_clock,
-            port_arbitration_table_entry_count: vc.port_arbitration_table_entry_count,
-            vc_arbitration_table_offset: vc.vc_arbitration_table_offset,
-            vc_arbitration_table_entry_count: vc.vc_arbitration_table_entry_count,
+            pat_entry_bits: vc.pat_entry_bits,
+            arbitration_table_position: vc.arbitration_table_position,
             port_control: format!("0x{:04x}", vc.port_control),
             port_status: format!("0x{:04x}", vc.port_status),
             resources: vc
                 .resources
                 .iter()
                 .map(|resource| JsonVcResource {
-                    capability: format!("0x{:08x}", resource.capability),
                     control: format!("0x{:08x}", resource.control),
                     status: format!("0x{:08x}", resource.status),
+                    capability: format!("0x{:08x}", resource.capability),
                 })
                 .collect(),
         }),
