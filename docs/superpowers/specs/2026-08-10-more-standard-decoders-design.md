@@ -78,7 +78,7 @@ pub struct VpdCapability {
 ```rust
 pub struct PciXCapability {
     // 命令寄存器（cap+2 word）
-    pub unrequested: bool,        // bit 0
+    pub parity_error_recovery: bool, // bit 0
     pub relaxed_ordering: bool,   // bit 1
     pub max_memory_block: u8,     // bits 2-3
     pub max_split: u8,            // bits 4-6
