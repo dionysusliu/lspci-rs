@@ -1,6 +1,6 @@
 use pci::{
-    ConfigSpaceSnapshot, PciAddress, PciCapability, PciCapabilityChainStatus, PciCapabilityKind,
-    PciCapabilityReport, PciField, PciInspection, PciResource, PciSnapshot,
+    ConfigSpaceSnapshot, PciAddress, PciCapability, PciCapabilityChainStatus, PciCapabilityContent,
+    PciCapabilityKind, PciCapabilityReport, PciField, PciInspection, PciResource, PciSnapshot,
 };
 use serde::Serialize;
 use std::fmt::{Display, LowerHex, Write as _};
@@ -234,6 +234,95 @@ fn render_capability_group_text(
             capability.state
         )
         .unwrap();
+
+        if let Some(content) = &capability.content {
+            writeln!(
+                output,
+                "        content: {}",
+                render_capability_content(content)
+            )
+            .unwrap();
+        }
+    }
+}
+
+fn render_capability_content(content: &PciCapabilityContent) -> String {
+    match content {
+        PciCapabilityContent::Pm(pm) => format!(
+            "version={} pme_support=0x{:02x} power_state=D{} pme_enable={} pme_status={} no_soft_reset={}",
+            pm.version,
+            pm.pme_support,
+            pm.power_state,
+            pm.pme_enable,
+            pm.pme_status,
+            pm.no_soft_reset
+        ),
+        PciCapabilityContent::Msi(msi) => format!(
+            "enable={} count={}/{} 64bit={} maskable={} address=0x{:x} data=0x{:x}",
+            msi.enable,
+            1u32 << msi.multiple_message_enable,
+            1u32 << msi.multiple_message_capable,
+            msi.is_64_bit,
+            msi.per_vector_masking,
+            msi.address,
+            msi.data
+        ),
+        PciCapabilityContent::MsiX(msix) => format!(
+            "enable={} count={} masked={} table=BAR{}+0x{:x} pba=BAR{}+0x{:x}",
+            msix.enable,
+            msix.count,
+            msix.masked,
+            msix.table_bar,
+            msix.table_offset,
+            msix.pba_bar,
+            msix.pba_offset
+        ),
+        PciCapabilityContent::Pcie(pcie) => format!(
+            "version={} type={} slot={} link_max={}GT/s x{} link={}GT/s x{} training={}",
+            pcie.version,
+            render_pcie_device_type(pcie.device_type),
+            pcie.slot_implemented,
+            render_pcie_speed(pcie.link_max_speed),
+            pcie.link_max_width,
+            render_pcie_speed(pcie.link_current_speed),
+            pcie.link_current_width,
+            pcie.link_training
+        ),
+        PciCapabilityContent::VendorSpecific(vendor) => {
+            let data: Vec<String> = vendor
+                .data
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect();
+            format!("len={} data={}", vendor.length, data.join(" "))
+        }
+    }
+}
+
+fn render_pcie_device_type(device_type: u8) -> &'static str {
+    match device_type {
+        0x0 => "endpoint",
+        0x1 => "legacy-endpoint",
+        0x4 => "root-port",
+        0x5 => "upstream-switch-port",
+        0x6 => "downstream-switch-port",
+        0x7 => "pcie-to-pci-bridge",
+        0x8 => "pci-to-pcie-bridge",
+        0x9 => "rc-integrated-endpoint",
+        0xa => "rc-event-collector",
+        _ => "unknown",
+    }
+}
+
+fn render_pcie_speed(speed: u8) -> &'static str {
+    match speed {
+        1 => "2.5",
+        2 => "5.0",
+        3 => "8.0",
+        4 => "16.0",
+        5 => "32.0",
+        6 => "64.0",
+        _ => "?",
     }
 }
 
@@ -404,6 +493,101 @@ struct JsonCapability {
     next: Option<String>,
 
     state: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content: Option<JsonCapabilityContent>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "type")]
+enum JsonCapabilityContent {
+    #[serde(rename = "pm")]
+    Pm(JsonPm),
+    #[serde(rename = "msi")]
+    Msi(JsonMsi),
+    #[serde(rename = "msix")]
+    MsiX(JsonMsiX),
+    #[serde(rename = "pcie")]
+    Pcie(JsonPcie),
+    #[serde(rename = "vendor_specific")]
+    VendorSpecific(JsonVendorSpecific),
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPm {
+    version: u8,
+    pme_clock: bool,
+    dsi: bool,
+    aux_current: u8,
+    d1_support: bool,
+    d2_support: bool,
+    pme_support: String,
+    power_state: String,
+    no_soft_reset: bool,
+    pme_enable: bool,
+    data_select: u8,
+    data_scale: u8,
+    pme_status: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonMsi {
+    enable: bool,
+    vectors_capable: u32,
+    vectors_enabled: u32,
+    is_64_bit: bool,
+    per_vector_masking: bool,
+    address: String,
+    data: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonMsiX {
+    enable: bool,
+    count: u16,
+    masked: bool,
+    table: JsonBarRef,
+    pba: JsonBarRef,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonBarRef {
+    bar: u8,
+    offset: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPcie {
+    version: u8,
+    device_type: String,
+    slot_implemented: bool,
+    interrupt_message_number: u8,
+    dev_ctl: String,
+    dev_sta: String,
+    link_max_speed: String,
+    link_max_width: u8,
+    link_target_speed: String,
+    link_current_speed: String,
+    link_current_width: u8,
+    link_training: bool,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    slot_ctl: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    slot_sta: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    root_ctl: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    root_sta: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonVendorSpecific {
+    length: u8,
+    data: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -573,8 +757,80 @@ fn json_capability_list(capabilities: &[PciCapability]) -> Vec<JsonCapability> {
             offset: format!("0x{:03x}", capability.offset),
             next: capability.next.map(|next| format!("0x{next:03x}")),
             state: format!("{:?}", capability.state),
+            content: capability.content.as_ref().map(json_capability_content),
         })
         .collect()
+}
+
+fn json_capability_content(content: &PciCapabilityContent) -> JsonCapabilityContent {
+    match content {
+        PciCapabilityContent::Pm(pm) => JsonCapabilityContent::Pm(JsonPm {
+            version: pm.version,
+            pme_clock: pm.pme_clock,
+            dsi: pm.dsi,
+            aux_current: pm.aux_current,
+            d1_support: pm.d1_support,
+            d2_support: pm.d2_support,
+            pme_support: format!("0x{:02x}", pm.pme_support),
+            power_state: format!("D{}", pm.power_state),
+            no_soft_reset: pm.no_soft_reset,
+            pme_enable: pm.pme_enable,
+            data_select: pm.data_select,
+            data_scale: pm.data_scale,
+            pme_status: pm.pme_status,
+        }),
+        PciCapabilityContent::Msi(msi) => JsonCapabilityContent::Msi(JsonMsi {
+            enable: msi.enable,
+            vectors_capable: 1u32 << msi.multiple_message_capable,
+            vectors_enabled: 1u32 << msi.multiple_message_enable,
+            is_64_bit: msi.is_64_bit,
+            per_vector_masking: msi.per_vector_masking,
+            address: format!("0x{:x}", msi.address),
+            data: format!("0x{:x}", msi.data),
+        }),
+        PciCapabilityContent::MsiX(msix) => JsonCapabilityContent::MsiX(JsonMsiX {
+            enable: msix.enable,
+            count: msix.count,
+            masked: msix.masked,
+            table: JsonBarRef {
+                bar: msix.table_bar,
+                offset: format!("0x{:x}", msix.table_offset),
+            },
+            pba: JsonBarRef {
+                bar: msix.pba_bar,
+                offset: format!("0x{:x}", msix.pba_offset),
+            },
+        }),
+        PciCapabilityContent::Pcie(pcie) => JsonCapabilityContent::Pcie(JsonPcie {
+            version: pcie.version,
+            device_type: render_pcie_device_type(pcie.device_type).to_owned(),
+            slot_implemented: pcie.slot_implemented,
+            interrupt_message_number: pcie.interrupt_message_number,
+            dev_ctl: format!("0x{:04x}", pcie.dev_ctl),
+            dev_sta: format!("0x{:04x}", pcie.dev_sta),
+            link_max_speed: render_pcie_speed(pcie.link_max_speed).to_owned(),
+            link_max_width: pcie.link_max_width,
+            link_target_speed: render_pcie_speed(pcie.link_target_speed).to_owned(),
+            link_current_speed: render_pcie_speed(pcie.link_current_speed).to_owned(),
+            link_current_width: pcie.link_current_width,
+            link_training: pcie.link_training,
+            slot_ctl: pcie.slot_ctl.map(|value| format!("0x{value:04x}")),
+            slot_sta: pcie.slot_sta.map(|value| format!("0x{value:04x}")),
+            root_ctl: pcie.root_ctl.map(|value| format!("0x{value:04x}")),
+            root_sta: pcie.root_sta.map(|value| format!("0x{value:08x}")),
+        }),
+        PciCapabilityContent::VendorSpecific(vendor) => {
+            JsonCapabilityContent::VendorSpecific(JsonVendorSpecific {
+                length: vendor.length,
+                data: vendor
+                    .data
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            })
+        }
+    }
 }
 
 fn json_chain_status(status: &PciCapabilityChainStatus) -> String {
