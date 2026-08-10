@@ -74,8 +74,9 @@ impl PciSession {
             let device = Self::device_from_raw(self.access, raw);
             let capabilities = {
                 let mut reader = ConfigSpaceReader::new(raw, 0x000..0x1000);
+                let header_readable = reader.read(0x000, 0x040).is_ok();
                 let report = capability::discover(&mut reader);
-                Self::capabilities_from_report(report)
+                Self::capabilities_from_report(report, header_readable)
             };
             let details = Self::details_from_raw(raw, known_fields, capabilities);
 
@@ -267,15 +268,19 @@ impl PciSession {
         }
     }
 
-    fn capabilities_from_report(report: PciCapabilityReport) -> PciField<PciCapabilityReport> {
-        if matches!(
-            report.standard_status,
-            PciCapabilityChainStatus::Unavailable(_)
-        ) {
-            PciField::Unavailable {
-                reason: PciFieldUnavailableReason::ReadError,
-            }
-        } else if matches!(report.standard_status, PciCapabilityChainStatus::NotPresent)
+    fn capabilities_from_report(
+        report: PciCapabilityReport,
+        header_readable: bool,
+    ) -> PciField<PciCapabilityReport> {
+        if !header_readable {
+            let reason = match report.standard_status {
+                PciCapabilityChainStatus::Unavailable(reason) => reason,
+                _ => PciFieldUnavailableReason::ReadError,
+            };
+            return PciField::Unavailable { reason };
+        }
+
+        if matches!(report.standard_status, PciCapabilityChainStatus::NotPresent)
             && matches!(report.extended_status, PciCapabilityChainStatus::NotPresent)
         {
             PciField::NotApplicable
