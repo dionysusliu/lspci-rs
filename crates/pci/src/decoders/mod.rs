@@ -15,9 +15,11 @@ pub mod pcie;
 pub mod pm;
 pub mod pri;
 pub mod ptm;
+pub mod secondary_pcie;
 pub mod slot_id;
 pub mod sriov;
 pub mod tph;
+pub mod vc;
 pub mod vendor;
 pub mod vendor_ext;
 pub mod vpd;
@@ -39,9 +41,11 @@ pub use pcie::PcieCapability;
 pub use pm::PmCapability;
 pub use pri::PriCapability;
 pub use ptm::PtmCapability;
+pub use secondary_pcie::SecondaryPcieCapability;
 pub use slot_id::SlotIdCapability;
 pub use sriov::SriovCapability;
 pub use tph::TphCapability;
+pub use vc::VcCapability;
 pub use vendor::VendorSpecificCapability;
 pub use vendor_ext::VendorExtCapability;
 pub use vpd::VpdCapability;
@@ -75,6 +79,8 @@ pub enum PciCapabilityContent {
     Tph(TphCapability),
     VendorExt(VendorExtCapability),
     Dvsec(DvsecCapability),
+    Vc(VcCapability),
+    SecondaryPcie(SecondaryPcieCapability),
 }
 
 pub(crate) fn read_word(
@@ -146,6 +152,13 @@ pub(crate) fn decode_content(snapshot: &ConfigSpaceSnapshot, capability: &mut Pc
         }
         (PciCapabilityKind::Extended, 0x1d) => {
             dpc::decode_dpc(snapshot, offset).map(PciCapabilityContent::Dpc)
+        }
+        (PciCapabilityKind::Extended, 0x02) => {
+            vc::decode_vc(snapshot, offset).map(PciCapabilityContent::Vc)
+        }
+        (PciCapabilityKind::Extended, 0x19) => {
+            secondary_pcie::decode_secondary_pcie(snapshot, offset)
+                .map(PciCapabilityContent::SecondaryPcie)
         }
         (PciCapabilityKind::Extended, 0x0b) => {
             vendor_ext::decode_vendor_ext(snapshot, offset).map(PciCapabilityContent::VendorExt)
