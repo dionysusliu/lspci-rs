@@ -25,6 +25,15 @@ pub struct PciDeviceDetails {
     pub capabilities: PciField<PciCapabilityReport>,
     pub command: PciField<crate::CommandRegister>,
     pub status: PciField<crate::StatusRegister>,
+    pub cache_line_size: PciField<u8>,
+    pub latency_timer: PciField<u8>,
+    pub header_type: PciField<crate::PciHeaderType>,
+    pub bist: PciField<crate::PciBist>,
+    pub expansion_rom: PciField<crate::PciExpansionRom>,
+    pub interrupt_line: PciField<u8>,
+    pub interrupt_pin: PciField<crate::PciInterruptPin>,
+    pub cardbus_cis_pointer: PciField<u32>,
+    pub bridge: PciField<crate::PciBridgeHeader>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

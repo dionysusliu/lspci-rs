@@ -10,7 +10,7 @@ use pci_sys::bindings::{
 use crate::{
     ConfigReadLevel, ConfigSpaceReader, ConfigSpaceSnapshot, PciAddress, PciCapabilityChainStatus,
     PciCapabilityReport, PciCapabilityState, PciDevice, PciDeviceDetails, PciError, PciField,
-    PciFieldUnavailableReason, PciResource, PciSnapshot, capability, decoders,
+    PciFieldUnavailableReason, PciHeaderKind, PciResource, PciSnapshot, capability, decoders,
     details::PciInspection, header,
 };
 
