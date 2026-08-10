@@ -1,7 +1,8 @@
 use pci::{
-    AER_CE_BITS, AER_UE_BITS, AerCapability, ConfigSpaceSnapshot, PciAddress, PciCapability,
-    PciCapabilityChainStatus, PciCapabilityContent, PciCapabilityKind, PciCapabilityReport,
-    PciField, PciInspection, PciResource, PciSnapshot, capability_name,
+    AER_CE_BITS, AER_UE_BITS, AerCapability, CommandRegister, ConfigSpaceSnapshot, PciAddress,
+    PciBarKind, PciBarType, PciCapability, PciCapabilityChainStatus, PciCapabilityContent,
+    PciCapabilityKind, PciCapabilityReport, PciField, PciInspection, PciResource, PciSnapshot,
+    StatusRegister, capability_name,
 };
 use serde::Serialize;
 use std::fmt::{Display, LowerHex, Write as _};
@@ -159,15 +160,44 @@ pub fn render_inspection_text(
 
     writeln!(output, "  driver: {}", render_field(&details.driver)).unwrap();
 
+    match &details.command {
+        PciField::Available(command) => {
+            writeln!(output, "  control: {}", render_command_text(command)).unwrap();
+        }
+        PciField::Unavailable { reason } => {
+            writeln!(output, "  control: <unavailable: {reason:?}>").unwrap();
+        }
+        PciField::NotApplicable => {
+            writeln!(output, "  control: <not-applicable>").unwrap();
+        }
+    }
+
+    match &details.status {
+        PciField::Available(status) => {
+            writeln!(output, "  status: {}", render_status_text(status)).unwrap();
+        }
+        PciField::Unavailable { reason } => {
+            writeln!(output, "  status: <unavailable: {reason:?}>").unwrap();
+        }
+        PciField::NotApplicable => {
+            writeln!(output, "  status: <not-applicable>").unwrap();
+        }
+    }
+
     match &details.resources {
         PciField::Available(resources) => {
             writeln!(output, "  resources:").unwrap();
 
             for resource in resources {
+                let bar_type = resource
+                    .bar_type
+                    .as_ref()
+                    .map(render_bar_type)
+                    .unwrap_or_else(|| "unknown".to_owned());
                 writeln!(
                     output,
-                    "    BAR{} start=0x{:x} size=0x{:x} flags=0x{:x}",
-                    resource.index, resource.start, resource.size, resource.flags
+                    "    BAR{} start=0x{:x} size=0x{:x} type={} flags=0x{:x}",
+                    resource.index, resource.start, resource.size, bar_type, resource.flags
                 )
                 .unwrap();
             }
@@ -525,6 +555,63 @@ fn render_aer_text(aer: &AerCapability) -> String {
     output
 }
 
+fn render_command_text(command: &CommandRegister) -> String {
+    let flag = |enabled: bool| if enabled { "+" } else { "-" };
+    format!(
+        "I/O{} Mem{} BusMaster{} SpecCycle{} MemWINV{} VGASnoop{} ParErr{} Stepping{} SERR{} FastB2B{} DisINTx{}",
+        flag(command.io_space),
+        flag(command.memory_space),
+        flag(command.bus_master),
+        flag(command.special_cycle),
+        flag(command.mem_write_invalidate),
+        flag(command.vga_palette_snoop),
+        flag(command.parity_error_response),
+        flag(command.stepping),
+        flag(command.serr_enable),
+        flag(command.fast_back_to_back),
+        flag(command.interrupt_disable),
+    )
+}
+
+fn render_status_text(status: &StatusRegister) -> String {
+    let flag = |enabled: bool| if enabled { "+" } else { "-" };
+    let devsel = match status.devsel_timing {
+        0 => "fast",
+        1 => "medium",
+        2 => "slow",
+        _ => "unknown",
+    };
+    format!(
+        "Cap{} 66MHz{} UDF{} FastB2B{} ParErr{} DEVSEL={} >TAbort{} <TAbort{} <MAbort{} >SERR{} <PERR{} INTx{}",
+        flag(status.capabilities_list),
+        flag(status.capable_66mhz),
+        flag(status.udf),
+        flag(status.capable_fast_back_to_back),
+        flag(status.master_parity_error),
+        devsel,
+        flag(status.signaled_target_abort),
+        flag(status.received_target_abort),
+        flag(status.received_master_abort),
+        flag(status.signaled_system_error),
+        flag(status.detected_parity_error),
+        flag(status.interrupt_status),
+    )
+}
+
+fn render_bar_type(bar_type: &PciBarType) -> String {
+    match bar_type.kind {
+        PciBarKind::Io => "io".to_owned(),
+        PciBarKind::Memory => {
+            let width = if bar_type.is_64_bit { "64" } else { "32" };
+            if bar_type.prefetchable {
+                format!("memory-{width}-prefetch")
+            } else {
+                format!("memory-{width}")
+            }
+        }
+    }
+}
+
 fn render_next_pointer(next: &Option<u16>) -> String {
     match next {
         Some(next) => format!("0x{next:03x}"),
@@ -636,6 +723,8 @@ pub fn render_inspection_json(
             driver: json_field(&details.driver),
             resources: json_resources(&details.resources),
             capabilities: json_capabilities(&details.capabilities),
+            command: json_command(&details.command),
+            status: json_status(&details.status),
         },
 
         config: config.map(json_config_space),
@@ -664,6 +753,8 @@ struct JsonDetails {
     driver: JsonField<String>,
     resources: JsonField<Vec<JsonResource>>,
     capabilities: JsonField<JsonCapabilities>,
+    command: JsonField<JsonCommand>,
+    status: JsonField<JsonStatus>,
 }
 
 #[derive(Debug, Serialize)]
@@ -672,6 +763,40 @@ struct JsonResource {
     start: String,
     size: String,
     flags: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bar_type: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonCommand {
+    io_space: bool,
+    memory_space: bool,
+    bus_master: bool,
+    special_cycle: bool,
+    mem_write_invalidate: bool,
+    vga_palette_snoop: bool,
+    parity_error_response: bool,
+    stepping: bool,
+    serr_enable: bool,
+    fast_back_to_back: bool,
+    interrupt_disable: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonStatus {
+    interrupt_status: bool,
+    capabilities_list: bool,
+    capable_66mhz: bool,
+    udf: bool,
+    capable_fast_back_to_back: bool,
+    master_parity_error: bool,
+    devsel: String,
+    signaled_target_abort: bool,
+    received_target_abort: bool,
+    received_master_abort: bool,
+    signaled_system_error: bool,
+    detected_parity_error: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -1168,6 +1293,7 @@ fn json_resources(field: &PciField<Vec<PciResource>>) -> JsonField<Vec<JsonResou
                         start: format!("0x{:x}", resource.start),
                         size: format!("0x{:x}", resource.size),
                         flags: format!("0x{:x}", resource.flags),
+                        bar_type: resource.bar_type.as_ref().map(render_bar_type),
                     })
                     .collect(),
             ),
@@ -1522,6 +1648,76 @@ fn aer_flag_bit_names(value: u32, bits: &[(u8, &str)]) -> Vec<String> {
         .filter(|(bit, _)| value & (1u32 << bit) != 0)
         .map(|(_, name)| (*name).to_owned())
         .collect()
+}
+
+fn json_command(field: &PciField<CommandRegister>) -> JsonField<JsonCommand> {
+    match field {
+        PciField::Available(command) => JsonField {
+            state: "available",
+            value: Some(JsonCommand {
+                io_space: command.io_space,
+                memory_space: command.memory_space,
+                bus_master: command.bus_master,
+                special_cycle: command.special_cycle,
+                mem_write_invalidate: command.mem_write_invalidate,
+                vga_palette_snoop: command.vga_palette_snoop,
+                parity_error_response: command.parity_error_response,
+                stepping: command.stepping,
+                serr_enable: command.serr_enable,
+                fast_back_to_back: command.fast_back_to_back,
+                interrupt_disable: command.interrupt_disable,
+            }),
+            reason: None,
+        },
+        PciField::Unavailable { reason } => JsonField {
+            state: "unavailable",
+            value: None,
+            reason: Some(format!("{reason:?}")),
+        },
+        PciField::NotApplicable => JsonField {
+            state: "not_applicable",
+            value: None,
+            reason: None,
+        },
+    }
+}
+
+fn json_status(field: &PciField<StatusRegister>) -> JsonField<JsonStatus> {
+    match field {
+        PciField::Available(status) => JsonField {
+            state: "available",
+            value: Some(JsonStatus {
+                interrupt_status: status.interrupt_status,
+                capabilities_list: status.capabilities_list,
+                capable_66mhz: status.capable_66mhz,
+                udf: status.udf,
+                capable_fast_back_to_back: status.capable_fast_back_to_back,
+                master_parity_error: status.master_parity_error,
+                devsel: match status.devsel_timing {
+                    0 => "fast".to_owned(),
+                    1 => "medium".to_owned(),
+                    2 => "slow".to_owned(),
+                    _ => "unknown".to_owned(),
+                },
+                signaled_target_abort: status.signaled_target_abort,
+                received_target_abort: status.received_target_abort,
+                received_master_abort: status.received_master_abort,
+                signaled_system_error: status.signaled_system_error,
+                detected_parity_error: status.detected_parity_error,
+            }),
+            reason: None,
+        },
+        PciField::Unavailable { reason } => JsonField {
+            state: "unavailable",
+            value: None,
+            reason: Some(format!("{reason:?}")),
+        },
+        PciField::NotApplicable => JsonField {
+            state: "not_applicable",
+            value: None,
+            reason: None,
+        },
+    }
 }
 
 fn json_chain_status(status: &PciCapabilityChainStatus) -> String {
