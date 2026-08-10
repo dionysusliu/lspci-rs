@@ -2,6 +2,8 @@ use std::{ffi::c_int, ops::Range};
 
 use crate::PciFieldUnavailableReason;
 
+const MIN_READ_BLOCK: u32 = 16;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConfigReadLevel {
     Header,
@@ -134,19 +136,29 @@ impl ConfigSpaceReader {
             return Err(failure);
         }
 
-        let len = match c_int::try_from(length) {
-            Ok(len) => len,
-            Err(_) => {
-                let failure = self.record_failure(offset, length);
-                return Err(failure);
-            }
+        if self.try_read_block(offset, length) {
+            return Ok(());
+        }
+
+        // libpci backends may reject a large block read even when smaller
+        // sub-ranges are readable, so split before recording a failure.
+        if length <= MIN_READ_BLOCK {
+            let failure = self.record_failure(offset, length);
+            return Err(failure);
+        }
+
+        let left_length = length / 2;
+        let left = self.read_range(offset, left_length);
+        let right = self.read_range(offset + left_length, length - left_length);
+        left.and(right)
+    }
+
+    fn try_read_block(&mut self, offset: u32, length: u32) -> bool {
+        let Ok(len) = c_int::try_from(length) else {
+            return false;
         };
-        let raw_offset = match c_int::try_from(offset) {
-            Ok(offset) => offset,
-            Err(_) => {
-                let failure = self.record_failure(offset, length);
-                return Err(failure);
-            }
+        let Ok(raw_offset) = c_int::try_from(offset) else {
+            return false;
         };
 
         let mut bytes = vec![0u8; length as usize];
@@ -154,13 +166,13 @@ impl ConfigSpaceReader {
             pci_sys::bindings::pci_read_block(self.raw, raw_offset, bytes.as_mut_ptr(), len)
         };
 
-        if read != len {
-            let failure = self.record_failure(offset, length);
-            return Err(failure);
+        // libpci returns 1 on success and 0 or -1 on failure
+        if read != 1 {
+            return false;
         }
 
         self.insert_segment(offset, bytes);
-        Ok(())
+        true
     }
 
     fn insert_segment(&mut self, offset: u32, bytes: Vec<u8>) {
