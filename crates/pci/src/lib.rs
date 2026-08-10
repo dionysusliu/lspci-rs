@@ -26,6 +26,9 @@ pub use field::{
     PciCapability, PciCapabilityChainStatus, PciCapabilityKind, PciCapabilityMalformedReason,
     PciCapabilityReport, PciCapabilityState, PciField, PciFieldUnavailableReason,
 };
-pub use header::{CommandRegister, PciBarKind, PciBarType, StatusRegister};
+pub use header::{
+    CommandRegister, PciBarKind, PciBarType, PciBist, PciBridgeHeader, PciExpansionRom,
+    PciHeaderKind, PciHeaderType, PciInterruptPin, StatusRegister,
+};
 pub use names::capability_name;
 pub use session::PciSession;
