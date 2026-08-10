@@ -2,7 +2,7 @@ use pci::{
     AER_CE_BITS, AER_UE_BITS, AerCapability, CommandRegister, ConfigSpaceSnapshot, PciAddress,
     PciBarKind, PciBarType, PciCapability, PciCapabilityChainStatus, PciCapabilityContent,
     PciCapabilityKind, PciCapabilityReport, PciField, PciInspection, PciResource, PciSnapshot,
-    StatusRegister, capability_name,
+    PcieCapability, StatusRegister, capability_name,
 };
 use serde::Serialize;
 use std::fmt::{Display, LowerHex, Write as _};
@@ -308,17 +308,7 @@ fn render_capability_content(content: &PciCapabilityContent) -> String {
             msix.pba_bar,
             msix.pba_offset
         ),
-        PciCapabilityContent::Pcie(pcie) => format!(
-            "version={} type={} slot={} link_max={}GT/s x{} link={}GT/s x{} training={}",
-            pcie.version,
-            render_pcie_device_type(pcie.device_type),
-            pcie.slot_implemented,
-            render_pcie_speed(pcie.link_max_speed),
-            pcie.link_max_width,
-            render_pcie_speed(pcie.link_current_speed),
-            pcie.link_current_width,
-            pcie.link_training
-        ),
+        PciCapabilityContent::Pcie(pcie) => render_pcie_text(pcie),
         PciCapabilityContent::SlotId(slot_id) => format!(
             "slots={} first={} chassis=0x{:02x}",
             slot_id.slots, slot_id.first, slot_id.chassis
@@ -610,6 +600,288 @@ fn render_bar_type(bar_type: &PciBarType) -> String {
             }
         }
     }
+}
+
+fn pcie_max_payload(code: u8) -> &'static str {
+    match code {
+        0 => "128 bytes",
+        1 => "256 bytes",
+        2 => "512 bytes",
+        3 => "1024 bytes",
+        4 => "2048 bytes",
+        5 => "4096 bytes",
+        _ => "reserved",
+    }
+}
+
+fn pcie_max_read_req(code: u8) -> &'static str {
+    match code {
+        0 => "128 bytes",
+        1 => "256 bytes",
+        2 => "512 bytes",
+        3 => "1024 bytes",
+        4 => "2048 bytes",
+        5 => "4096 bytes",
+        _ => "reserved",
+    }
+}
+
+fn pcie_aspm_support(aspm: u8) -> &'static str {
+    match aspm {
+        0 => "not supported",
+        1 => "L0s",
+        2 => "L1",
+        3 => "L0s L1",
+        _ => "reserved",
+    }
+}
+
+fn pcie_aspm_control(aspm: u8) -> &'static str {
+    match aspm {
+        0 => "Disabled",
+        1 => "L0s Only",
+        2 => "L1 Only",
+        3 => "L0s L1",
+        _ => "reserved",
+    }
+}
+
+fn pcie_flag(enabled: bool) -> &'static str {
+    if enabled { "+" } else { "-" }
+}
+
+fn render_pcie_text(pcie: &PcieCapability) -> String {
+    let dev_cap = &pcie.dev_cap;
+    let dev_ctl = &pcie.dev_ctl;
+    let dev_sta = &pcie.dev_sta;
+    let lnk_cap = &pcie.lnk_cap;
+    let lnk_ctl = &pcie.lnk_ctl;
+    let lnk_sta = &pcie.lnk_sta;
+
+    let mut output = format!(
+        "version={} type={} slot={} msi={}",
+        pcie.version,
+        render_pcie_device_type(pcie.device_type),
+        pcie.slot_implemented,
+        pcie.interrupt_message_number
+    );
+
+    output.push_str(&format!(
+        "\n          DevCap: MaxPayload {} PhantFunc {} Latency L0s {} L1 {}",
+        pcie_max_payload(dev_cap.max_payload),
+        dev_cap.phantom_functions,
+        dev_cap.l0s_latency,
+        dev_cap.l1_latency
+    ));
+    output.push_str(&format!(
+        "\n                  ExtTag{} AttnBtn{} AttnInd{} PwrInd{} RBE{} FLReset{}",
+        pcie_flag(dev_cap.extended_tag),
+        pcie_flag(dev_cap.attention_button),
+        pcie_flag(dev_cap.attention_indicator),
+        pcie_flag(dev_cap.power_indicator),
+        pcie_flag(dev_cap.role_based_error),
+        pcie_flag(dev_cap.flreset)
+    ));
+    output.push_str(&format!(
+        "\n          DevCtl: CorrErr{} NonFatalErr{} FatalErr{} UnsupReq{}",
+        pcie_flag(dev_ctl.corr_err),
+        pcie_flag(dev_ctl.non_fatal_err),
+        pcie_flag(dev_ctl.fatal_err),
+        pcie_flag(dev_ctl.unsup_req)
+    ));
+    output.push_str(&format!(
+        "\n                  RlxdOrd{} ExtTag{} PhantFunc{} AuxPwr{} NoSnoop{}",
+        pcie_flag(dev_ctl.relaxed_ordering),
+        pcie_flag(dev_ctl.extended_tag),
+        pcie_flag(dev_ctl.phantom_functions),
+        pcie_flag(dev_ctl.aux_power),
+        pcie_flag(dev_ctl.no_snoop)
+    ));
+    output.push_str(&format!(
+        "\n                  MaxPayload {}, MaxReadReq {}",
+        pcie_max_payload(dev_ctl.max_payload),
+        pcie_max_read_req(dev_ctl.max_read_req)
+    ));
+    output.push_str(&format!(
+        "\n          DevSta: CorrErr{} NonFatalErr{} FatalErr{} UnsupReq{} AuxPwr{} TransPend{}",
+        pcie_flag(dev_sta.corr_err),
+        pcie_flag(dev_sta.non_fatal_err),
+        pcie_flag(dev_sta.fatal_err),
+        pcie_flag(dev_sta.unsup_req),
+        pcie_flag(dev_sta.aux_power),
+        pcie_flag(dev_sta.trans_pending)
+    ));
+
+    let speed_downgraded = lnk_sta.speed < lnk_cap.max_speed;
+    let width_downgraded = lnk_sta.width < lnk_cap.max_width;
+    let speed_note = if speed_downgraded {
+        " (downgraded)"
+    } else {
+        " (ok)"
+    };
+    let width_note = if width_downgraded {
+        " (downgraded)"
+    } else {
+        ""
+    };
+
+    output.push_str(&format!(
+        "\n          LnkCap: Port #{}, Speed {}GT/s, Width x{}, ASPM {}, Exit Latency L0s {} L1 {}",
+        lnk_cap.port_number,
+        render_pcie_speed(lnk_cap.max_speed),
+        lnk_cap.max_width,
+        pcie_aspm_support(lnk_cap.aspm),
+        lnk_cap.l0s_exit_latency,
+        lnk_cap.l1_exit_latency
+    ));
+    output.push_str(&format!(
+        "\n                  ClockPM{} Surprise{} LLActRep{} BwNot{} ASPMOptComp{}",
+        pcie_flag(lnk_cap.clock_pm),
+        pcie_flag(lnk_cap.surprise_down),
+        pcie_flag(lnk_cap.dll_active),
+        pcie_flag(lnk_cap.link_bw_notif),
+        pcie_flag(lnk_cap.aspm_opt_compliance)
+    ));
+    output.push_str(&format!(
+        "\n          LnkCtl: ASPM {}; RCB {} bytes, Disabled{} CommClk{}",
+        pcie_aspm_control(lnk_ctl.aspm),
+        if lnk_ctl.rcb { "128" } else { "64" },
+        pcie_flag(lnk_ctl.link_disable),
+        pcie_flag(lnk_ctl.common_clock)
+    ));
+    output.push_str(&format!(
+        "\n                  ExtSynch{} ClockPM{} AutWidDis{} BWInt{} AutBWInt{}",
+        pcie_flag(lnk_ctl.extended_synch),
+        pcie_flag(lnk_ctl.clock_pm),
+        pcie_flag(lnk_ctl.autonomous_width_disable),
+        pcie_flag(lnk_ctl.bw_interrupt),
+        pcie_flag(lnk_ctl.autonomous_bw_interrupt)
+    ));
+    output.push_str(&format!(
+        "\n          LnkSta: Speed {}GT/s{}, Width x{}{}, TrErr{} Train{} SlotClk{} DLActive{} BWMgmt{} ABWMgmt{}",
+        render_pcie_speed(lnk_sta.speed),
+        speed_note,
+        lnk_sta.width,
+        width_note,
+        pcie_flag(lnk_sta.tr_err),
+        pcie_flag(lnk_sta.training),
+        pcie_flag(lnk_sta.slot_clock),
+        pcie_flag(lnk_sta.dll_active),
+        pcie_flag(lnk_sta.bw_management),
+        pcie_flag(lnk_sta.autonomous_bw)
+    ));
+
+    if let (Some(slot_cap), Some(slot_ctl), Some(slot_sta)) =
+        (&pcie.slot_cap, &pcie.slot_ctl, &pcie.slot_sta)
+    {
+        output.push_str(&format!(
+            "\n          SlotCap: AttnBtn{} PwrCtrl{} MRL{} AttnInd{} PwrInd{} HotPlugSurprise{} HotPlug{} PhysSlot={}",
+            pcie_flag(slot_cap.attention_button),
+            pcie_flag(slot_cap.power_controller),
+            pcie_flag(slot_cap.mrl),
+            pcie_flag(slot_cap.attention_indicator),
+            pcie_flag(slot_cap.power_indicator),
+            pcie_flag(slot_cap.hotplug_surprise),
+            pcie_flag(slot_cap.hotplug_capable),
+            slot_cap.physical_slot_number
+        ));
+        output.push_str(&format!(
+            "\n          SlotCtl: AttnBtn{} PwrFlt{} MRL{} Pres{} CmdCplt{} HPIrq{} PwrCtrl{}",
+            pcie_flag(slot_ctl.attention_button_enable),
+            pcie_flag(slot_ctl.power_fault_detect),
+            pcie_flag(slot_ctl.mrl_sensor),
+            pcie_flag(slot_ctl.presence_detect),
+            pcie_flag(slot_ctl.command_completed),
+            pcie_flag(slot_ctl.hotplug_interrupt),
+            pcie_flag(slot_ctl.power_controller_control)
+        ));
+        output.push_str(&format!(
+            "\n          SlotSta: AttnBtn{} PwrFlt{} MRL{} Pres{} CmdCplt{} MRLSta{} PresSta{} DLLSta{}",
+            pcie_flag(slot_sta.attention_button),
+            pcie_flag(slot_sta.power_fault),
+            pcie_flag(slot_sta.mrl_sensor),
+            pcie_flag(slot_sta.presence_detect),
+            pcie_flag(slot_sta.command_completed),
+            pcie_flag(slot_sta.mrl_state),
+            pcie_flag(slot_sta.presence_state),
+            pcie_flag(slot_sta.dll_state)
+        ));
+    }
+
+    if let (Some(root_ctl), Some(root_sta)) = (&pcie.root_ctl, &pcie.root_sta) {
+        output.push_str(&format!(
+            "\n          RootCtl: ErrCorrectable{} ErrNon-Fatal{} ErrFatal{} PMEInterrupt{} CRSVisible{}",
+            pcie_flag(root_ctl.serr_corr),
+            pcie_flag(root_ctl.serr_non_fatal),
+            pcie_flag(root_ctl.serr_fatal),
+            pcie_flag(root_ctl.pme_interrupt),
+            pcie_flag(root_ctl.crs_visible)
+        ));
+        output.push_str(&format!(
+            "\n          RootSta: PME ReqID 0x{:04x}, PME Status {}, PME Pending {}",
+            root_sta.pme_requester_id,
+            pcie_flag(root_sta.pme_status),
+            pcie_flag(root_sta.pme_pending)
+        ));
+    }
+
+    if let (Some(dev_cap2), Some(dev_ctl2), Some(lnk_ctl2), Some(lnk_sta2)) = (
+        &pcie.dev_cap2,
+        &pcie.dev_ctl2,
+        &pcie.lnk_ctl2,
+        &pcie.lnk_sta2,
+    ) {
+        output.push_str(&format!(
+            "\n          DevCap2: Completion Timeout: {:02x}, TimeoutDis{} ARI{} AtomicOpsRouting{} LTR{} 10BitTagComp{} 10BitTagReq{} OBFF {} ExtFmt{} EETLPPrefix{}",
+            dev_cap2.completion_timeout_ranges,
+            pcie_flag(dev_cap2.completion_timeout_disable),
+            pcie_flag(dev_cap2.ari),
+            pcie_flag(dev_cap2.atomic_op_routing),
+            pcie_flag(dev_cap2.ltr),
+            pcie_flag(dev_cap2.ten_bit_tag_completer),
+            pcie_flag(dev_cap2.ten_bit_tag_requester),
+            dev_cap2.obff,
+            pcie_flag(dev_cap2.ext_fmt),
+            pcie_flag(dev_cap2.ee_tlp_prefix)
+        ));
+        output.push_str(&format!(
+            "\n                  AtomicOpsCap: 32bit{} 64bit{} 128bitCAS{}",
+            pcie_flag(dev_cap2.atomic_32),
+            pcie_flag(dev_cap2.atomic_64),
+            pcie_flag(dev_cap2.atomic_128_cas)
+        ));
+        output.push_str(&format!(
+            "\n          DevCtl2: Completion Timeout: {:02x}, TimeoutDis{} LTR{} 10BitTagReq{} OBFF {}",
+            dev_ctl2.completion_timeout,
+            pcie_flag(dev_ctl2.completion_timeout_disable),
+            pcie_flag(dev_ctl2.ltr),
+            pcie_flag(dev_ctl2.ten_bit_tag_requester),
+            dev_ctl2.obff
+        ));
+        output.push_str(&format!(
+            "\n                  AtomicOpsCtl: ReqEn{} EgressBlk{}",
+            pcie_flag(dev_ctl2.atomic_op_requester),
+            pcie_flag(dev_ctl2.atomic_op_egress_blocking)
+        ));
+        output.push_str(&format!(
+            "\n          LnkCtl2: Target Speed: {}GT/s, ComplianceDeemphasis{} ComplianceSOS{}",
+            render_pcie_speed(lnk_ctl2.target_speed),
+            pcie_flag(lnk_ctl2.compliance_de_emphasis),
+            pcie_flag(lnk_ctl2.compliance_sos)
+        ));
+        output.push_str(&format!(
+            "\n          LnkSta2: Current De-emphasis: {}, EqualizationComplete{} EqualizationPhase1{} EqualizationPhase2{} EqualizationPhase3{} LinkEqualizationRequest{} Retimer{}",
+            if lnk_sta2.current_de_emphasis { "-6dB" } else { "-3.5dB" },
+            pcie_flag(lnk_sta2.equalization_complete),
+            pcie_flag(lnk_sta2.equalization_phase1),
+            pcie_flag(lnk_sta2.equalization_phase2),
+            pcie_flag(lnk_sta2.equalization_phase3),
+            pcie_flag(lnk_sta2.equalization_request),
+            lnk_sta2.retimer_presence
+        ));
+    }
+
+    output
 }
 
 fn render_next_pointer(next: &Option<u16>) -> String {
@@ -928,26 +1200,230 @@ struct JsonPcie {
     device_type: String,
     slot_implemented: bool,
     interrupt_message_number: u8,
-    dev_ctl: String,
-    dev_sta: String,
-    link_max_speed: String,
-    link_max_width: u8,
-    link_target_speed: String,
-    link_current_speed: String,
-    link_current_width: u8,
-    link_training: bool,
-
+    dev_cap: JsonPcieDevCap,
+    dev_ctl: JsonPcieDevCtl,
+    dev_sta: JsonPcieDevSta,
+    lnk_cap: JsonPcieLnkCap,
+    lnk_ctl: JsonPcieLnkCtl,
+    lnk_sta: JsonPcieLnkSta,
     #[serde(skip_serializing_if = "Option::is_none")]
-    slot_ctl: Option<String>,
-
+    slot_cap: Option<JsonPcieSlotCap>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    slot_sta: Option<String>,
-
+    slot_ctl: Option<JsonPcieSlotCtl>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    root_ctl: Option<String>,
-
+    slot_sta: Option<JsonPcieSlotSta>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    root_sta: Option<String>,
+    root_ctl: Option<JsonPcieRootCtl>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    root_sta: Option<JsonPcieRootSta>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dev_cap2: Option<JsonPcieDevCap2>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dev_ctl2: Option<JsonPcieDevCtl2>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lnk_ctl2: Option<JsonPcieLnkCtl2>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lnk_sta2: Option<JsonPcieLnkSta2>,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPcieDevCap {
+    max_payload: u8,
+    phantom_functions: u8,
+    extended_tag: bool,
+    l0s_latency: u8,
+    l1_latency: u8,
+    role_based_error: bool,
+    attention_button: bool,
+    attention_indicator: bool,
+    power_indicator: bool,
+    flreset: bool,
+    slot_power_limit: u8,
+    slot_power_limit_scale: u8,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPcieDevCtl {
+    corr_err: bool,
+    non_fatal_err: bool,
+    fatal_err: bool,
+    unsup_req: bool,
+    relaxed_ordering: bool,
+    max_payload: u8,
+    extended_tag: bool,
+    phantom_functions: bool,
+    aux_power: bool,
+    no_snoop: bool,
+    max_read_req: u8,
+    bridge_config_retry: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPcieDevSta {
+    corr_err: bool,
+    non_fatal_err: bool,
+    fatal_err: bool,
+    unsup_req: bool,
+    aux_power: bool,
+    trans_pending: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPcieLnkCap {
+    max_speed: u8,
+    max_width: u8,
+    aspm: u8,
+    l0s_exit_latency: u8,
+    l1_exit_latency: u8,
+    clock_pm: bool,
+    surprise_down: bool,
+    dll_active: bool,
+    link_bw_notif: bool,
+    aspm_opt_compliance: bool,
+    port_number: u8,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPcieLnkCtl {
+    aspm: u8,
+    rcb: bool,
+    link_disable: bool,
+    retrain: bool,
+    common_clock: bool,
+    extended_synch: bool,
+    clock_pm: bool,
+    autonomous_width_disable: bool,
+    bw_interrupt: bool,
+    autonomous_bw_interrupt: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPcieLnkSta {
+    speed: u8,
+    width: u8,
+    downgraded: bool,
+    tr_err: bool,
+    training: bool,
+    slot_clock: bool,
+    dll_active: bool,
+    bw_management: bool,
+    autonomous_bw: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPcieSlotCap {
+    attention_button: bool,
+    power_controller: bool,
+    mrl: bool,
+    attention_indicator: bool,
+    power_indicator: bool,
+    hotplug_surprise: bool,
+    hotplug_capable: bool,
+    slot_power_limit: u8,
+    slot_power_limit_scale: u8,
+    electromechanical: bool,
+    no_command_completed: bool,
+    physical_slot_number: u16,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPcieSlotCtl {
+    attention_button_enable: bool,
+    power_fault_detect: bool,
+    mrl_sensor: bool,
+    presence_detect: bool,
+    command_completed: bool,
+    hotplug_interrupt: bool,
+    attention_indicator: u8,
+    power_indicator: u8,
+    power_controller_control: bool,
+    power_interlock: bool,
+    dll_state_changed: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPcieSlotSta {
+    attention_button: bool,
+    power_fault: bool,
+    mrl_sensor: bool,
+    presence_detect: bool,
+    command_completed: bool,
+    mrl_state: bool,
+    presence_state: bool,
+    power_interlock: bool,
+    dll_state: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPcieRootCtl {
+    serr_corr: bool,
+    serr_non_fatal: bool,
+    serr_fatal: bool,
+    pme_interrupt: bool,
+    crs_visible: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPcieRootSta {
+    pme_requester_id: String,
+    pme_status: bool,
+    pme_pending: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPcieDevCap2 {
+    completion_timeout_ranges: u8,
+    completion_timeout_disable: bool,
+    ari: bool,
+    atomic_op_routing: bool,
+    atomic_32: bool,
+    atomic_64: bool,
+    atomic_128_cas: bool,
+    no_ro_pr_pr_passing: bool,
+    ltr: bool,
+    tph_completer: u8,
+    ten_bit_tag_completer: bool,
+    ten_bit_tag_requester: bool,
+    obff: u8,
+    ext_fmt: bool,
+    ee_tlp_prefix: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPcieDevCtl2 {
+    completion_timeout: u8,
+    completion_timeout_disable: bool,
+    ari: bool,
+    atomic_op_requester: bool,
+    atomic_op_egress_blocking: bool,
+    ido_request: bool,
+    ido_completion: bool,
+    ltr: bool,
+    ten_bit_tag_requester: bool,
+    obff: u8,
+    ee_tlp_prefix_blocking: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPcieLnkCtl2 {
+    target_speed: u8,
+    compliance_de_emphasis: bool,
+    transmit_margin: u8,
+    enter_modified_compliance: bool,
+    compliance_sos: bool,
+    compliance_preset: u8,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPcieLnkSta2 {
+    current_de_emphasis: bool,
+    equalization_complete: bool,
+    equalization_phase1: bool,
+    equalization_phase2: bool,
+    equalization_phase3: bool,
+    equalization_request: bool,
+    retimer_presence: u8,
+    crosslink_resolution: u8,
 }
 
 #[derive(Debug, Serialize)]
@@ -1395,24 +1871,186 @@ fn json_capability_content(content: &PciCapabilityContent) -> JsonCapabilityCont
                 offset: format!("0x{:x}", msix.pba_offset),
             },
         }),
-        PciCapabilityContent::Pcie(pcie) => JsonCapabilityContent::Pcie(JsonPcie {
-            version: pcie.version,
-            device_type: render_pcie_device_type(pcie.device_type).to_owned(),
-            slot_implemented: pcie.slot_implemented,
-            interrupt_message_number: pcie.interrupt_message_number,
-            dev_ctl: format!("0x{:04x}", pcie.dev_ctl),
-            dev_sta: format!("0x{:04x}", pcie.dev_sta),
-            link_max_speed: render_pcie_speed(pcie.link_max_speed).to_owned(),
-            link_max_width: pcie.link_max_width,
-            link_target_speed: render_pcie_speed(pcie.link_target_speed).to_owned(),
-            link_current_speed: render_pcie_speed(pcie.link_current_speed).to_owned(),
-            link_current_width: pcie.link_current_width,
-            link_training: pcie.link_training,
-            slot_ctl: pcie.slot_ctl.map(|value| format!("0x{value:04x}")),
-            slot_sta: pcie.slot_sta.map(|value| format!("0x{value:04x}")),
-            root_ctl: pcie.root_ctl.map(|value| format!("0x{value:04x}")),
-            root_sta: pcie.root_sta.map(|value| format!("0x{value:08x}")),
-        }),
+        PciCapabilityContent::Pcie(pcie) => {
+            let downgraded = pcie.lnk_sta.speed < pcie.lnk_cap.max_speed
+                || pcie.lnk_sta.width < pcie.lnk_cap.max_width;
+            JsonCapabilityContent::Pcie(JsonPcie {
+                version: pcie.version,
+                device_type: render_pcie_device_type(pcie.device_type).to_owned(),
+                slot_implemented: pcie.slot_implemented,
+                interrupt_message_number: pcie.interrupt_message_number,
+                dev_cap: JsonPcieDevCap {
+                    max_payload: pcie.dev_cap.max_payload,
+                    phantom_functions: pcie.dev_cap.phantom_functions,
+                    extended_tag: pcie.dev_cap.extended_tag,
+                    l0s_latency: pcie.dev_cap.l0s_latency,
+                    l1_latency: pcie.dev_cap.l1_latency,
+                    role_based_error: pcie.dev_cap.role_based_error,
+                    attention_button: pcie.dev_cap.attention_button,
+                    attention_indicator: pcie.dev_cap.attention_indicator,
+                    power_indicator: pcie.dev_cap.power_indicator,
+                    flreset: pcie.dev_cap.flreset,
+                    slot_power_limit: pcie.dev_cap.slot_power_limit,
+                    slot_power_limit_scale: pcie.dev_cap.slot_power_limit_scale,
+                },
+                dev_ctl: JsonPcieDevCtl {
+                    corr_err: pcie.dev_ctl.corr_err,
+                    non_fatal_err: pcie.dev_ctl.non_fatal_err,
+                    fatal_err: pcie.dev_ctl.fatal_err,
+                    unsup_req: pcie.dev_ctl.unsup_req,
+                    relaxed_ordering: pcie.dev_ctl.relaxed_ordering,
+                    max_payload: pcie.dev_ctl.max_payload,
+                    extended_tag: pcie.dev_ctl.extended_tag,
+                    phantom_functions: pcie.dev_ctl.phantom_functions,
+                    aux_power: pcie.dev_ctl.aux_power,
+                    no_snoop: pcie.dev_ctl.no_snoop,
+                    max_read_req: pcie.dev_ctl.max_read_req,
+                    bridge_config_retry: pcie.dev_ctl.bridge_config_retry,
+                },
+                dev_sta: JsonPcieDevSta {
+                    corr_err: pcie.dev_sta.corr_err,
+                    non_fatal_err: pcie.dev_sta.non_fatal_err,
+                    fatal_err: pcie.dev_sta.fatal_err,
+                    unsup_req: pcie.dev_sta.unsup_req,
+                    aux_power: pcie.dev_sta.aux_power,
+                    trans_pending: pcie.dev_sta.trans_pending,
+                },
+                lnk_cap: JsonPcieLnkCap {
+                    max_speed: pcie.lnk_cap.max_speed,
+                    max_width: pcie.lnk_cap.max_width,
+                    aspm: pcie.lnk_cap.aspm,
+                    l0s_exit_latency: pcie.lnk_cap.l0s_exit_latency,
+                    l1_exit_latency: pcie.lnk_cap.l1_exit_latency,
+                    clock_pm: pcie.lnk_cap.clock_pm,
+                    surprise_down: pcie.lnk_cap.surprise_down,
+                    dll_active: pcie.lnk_cap.dll_active,
+                    link_bw_notif: pcie.lnk_cap.link_bw_notif,
+                    aspm_opt_compliance: pcie.lnk_cap.aspm_opt_compliance,
+                    port_number: pcie.lnk_cap.port_number,
+                },
+                lnk_ctl: JsonPcieLnkCtl {
+                    aspm: pcie.lnk_ctl.aspm,
+                    rcb: pcie.lnk_ctl.rcb,
+                    link_disable: pcie.lnk_ctl.link_disable,
+                    retrain: pcie.lnk_ctl.retrain,
+                    common_clock: pcie.lnk_ctl.common_clock,
+                    extended_synch: pcie.lnk_ctl.extended_synch,
+                    clock_pm: pcie.lnk_ctl.clock_pm,
+                    autonomous_width_disable: pcie.lnk_ctl.autonomous_width_disable,
+                    bw_interrupt: pcie.lnk_ctl.bw_interrupt,
+                    autonomous_bw_interrupt: pcie.lnk_ctl.autonomous_bw_interrupt,
+                },
+                lnk_sta: JsonPcieLnkSta {
+                    speed: pcie.lnk_sta.speed,
+                    width: pcie.lnk_sta.width,
+                    downgraded,
+                    tr_err: pcie.lnk_sta.tr_err,
+                    training: pcie.lnk_sta.training,
+                    slot_clock: pcie.lnk_sta.slot_clock,
+                    dll_active: pcie.lnk_sta.dll_active,
+                    bw_management: pcie.lnk_sta.bw_management,
+                    autonomous_bw: pcie.lnk_sta.autonomous_bw,
+                },
+                slot_cap: pcie.slot_cap.as_ref().map(|slot_cap| JsonPcieSlotCap {
+                    attention_button: slot_cap.attention_button,
+                    power_controller: slot_cap.power_controller,
+                    mrl: slot_cap.mrl,
+                    attention_indicator: slot_cap.attention_indicator,
+                    power_indicator: slot_cap.power_indicator,
+                    hotplug_surprise: slot_cap.hotplug_surprise,
+                    hotplug_capable: slot_cap.hotplug_capable,
+                    slot_power_limit: slot_cap.slot_power_limit,
+                    slot_power_limit_scale: slot_cap.slot_power_limit_scale,
+                    electromechanical: slot_cap.electromechanical,
+                    no_command_completed: slot_cap.no_command_completed,
+                    physical_slot_number: slot_cap.physical_slot_number,
+                }),
+                slot_ctl: pcie.slot_ctl.as_ref().map(|slot_ctl| JsonPcieSlotCtl {
+                    attention_button_enable: slot_ctl.attention_button_enable,
+                    power_fault_detect: slot_ctl.power_fault_detect,
+                    mrl_sensor: slot_ctl.mrl_sensor,
+                    presence_detect: slot_ctl.presence_detect,
+                    command_completed: slot_ctl.command_completed,
+                    hotplug_interrupt: slot_ctl.hotplug_interrupt,
+                    attention_indicator: slot_ctl.attention_indicator,
+                    power_indicator: slot_ctl.power_indicator,
+                    power_controller_control: slot_ctl.power_controller_control,
+                    power_interlock: slot_ctl.power_interlock,
+                    dll_state_changed: slot_ctl.dll_state_changed,
+                }),
+                slot_sta: pcie.slot_sta.as_ref().map(|slot_sta| JsonPcieSlotSta {
+                    attention_button: slot_sta.attention_button,
+                    power_fault: slot_sta.power_fault,
+                    mrl_sensor: slot_sta.mrl_sensor,
+                    presence_detect: slot_sta.presence_detect,
+                    command_completed: slot_sta.command_completed,
+                    mrl_state: slot_sta.mrl_state,
+                    presence_state: slot_sta.presence_state,
+                    power_interlock: slot_sta.power_interlock,
+                    dll_state: slot_sta.dll_state,
+                }),
+                root_ctl: pcie.root_ctl.as_ref().map(|root_ctl| JsonPcieRootCtl {
+                    serr_corr: root_ctl.serr_corr,
+                    serr_non_fatal: root_ctl.serr_non_fatal,
+                    serr_fatal: root_ctl.serr_fatal,
+                    pme_interrupt: root_ctl.pme_interrupt,
+                    crs_visible: root_ctl.crs_visible,
+                }),
+                root_sta: pcie.root_sta.as_ref().map(|root_sta| JsonPcieRootSta {
+                    pme_requester_id: format!("0x{:04x}", root_sta.pme_requester_id),
+                    pme_status: root_sta.pme_status,
+                    pme_pending: root_sta.pme_pending,
+                }),
+                dev_cap2: pcie.dev_cap2.as_ref().map(|dev_cap2| JsonPcieDevCap2 {
+                    completion_timeout_ranges: dev_cap2.completion_timeout_ranges,
+                    completion_timeout_disable: dev_cap2.completion_timeout_disable,
+                    ari: dev_cap2.ari,
+                    atomic_op_routing: dev_cap2.atomic_op_routing,
+                    atomic_32: dev_cap2.atomic_32,
+                    atomic_64: dev_cap2.atomic_64,
+                    atomic_128_cas: dev_cap2.atomic_128_cas,
+                    no_ro_pr_pr_passing: dev_cap2.no_ro_pr_pr_passing,
+                    ltr: dev_cap2.ltr,
+                    tph_completer: dev_cap2.tph_completer,
+                    ten_bit_tag_completer: dev_cap2.ten_bit_tag_completer,
+                    ten_bit_tag_requester: dev_cap2.ten_bit_tag_requester,
+                    obff: dev_cap2.obff,
+                    ext_fmt: dev_cap2.ext_fmt,
+                    ee_tlp_prefix: dev_cap2.ee_tlp_prefix,
+                }),
+                dev_ctl2: pcie.dev_ctl2.as_ref().map(|dev_ctl2| JsonPcieDevCtl2 {
+                    completion_timeout: dev_ctl2.completion_timeout,
+                    completion_timeout_disable: dev_ctl2.completion_timeout_disable,
+                    ari: dev_ctl2.ari,
+                    atomic_op_requester: dev_ctl2.atomic_op_requester,
+                    atomic_op_egress_blocking: dev_ctl2.atomic_op_egress_blocking,
+                    ido_request: dev_ctl2.ido_request,
+                    ido_completion: dev_ctl2.ido_completion,
+                    ltr: dev_ctl2.ltr,
+                    ten_bit_tag_requester: dev_ctl2.ten_bit_tag_requester,
+                    obff: dev_ctl2.obff,
+                    ee_tlp_prefix_blocking: dev_ctl2.ee_tlp_prefix_blocking,
+                }),
+                lnk_ctl2: pcie.lnk_ctl2.as_ref().map(|lnk_ctl2| JsonPcieLnkCtl2 {
+                    target_speed: lnk_ctl2.target_speed,
+                    compliance_de_emphasis: lnk_ctl2.compliance_de_emphasis,
+                    transmit_margin: lnk_ctl2.transmit_margin,
+                    enter_modified_compliance: lnk_ctl2.enter_modified_compliance,
+                    compliance_sos: lnk_ctl2.compliance_sos,
+                    compliance_preset: lnk_ctl2.compliance_preset,
+                }),
+                lnk_sta2: pcie.lnk_sta2.as_ref().map(|lnk_sta2| JsonPcieLnkSta2 {
+                    current_de_emphasis: lnk_sta2.current_de_emphasis,
+                    equalization_complete: lnk_sta2.equalization_complete,
+                    equalization_phase1: lnk_sta2.equalization_phase1,
+                    equalization_phase2: lnk_sta2.equalization_phase2,
+                    equalization_phase3: lnk_sta2.equalization_phase3,
+                    equalization_request: lnk_sta2.equalization_request,
+                    retimer_presence: lnk_sta2.retimer_presence,
+                    crosslink_resolution: lnk_sta2.crosslink_resolution,
+                }),
+            })
+        }
         PciCapabilityContent::SlotId(slot_id) => JsonCapabilityContent::SlotId(JsonSlotId {
             slots: slot_id.slots,
             first: slot_id.first,
