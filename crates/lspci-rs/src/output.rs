@@ -1,7 +1,8 @@
 use pci::{
     AER_CE_BITS, AER_UE_BITS, AerCapability, CommandRegister, ConfigSpaceSnapshot, PciAddress,
-    PciBarKind, PciBarType, PciCapability, PciCapabilityChainStatus, PciCapabilityContent,
-    PciCapabilityKind, PciCapabilityReport, PciField, PciInspection, PciResource, PciSnapshot,
+    PciBarKind, PciBarType, PciBist, PciBridgeHeader, PciCapability, PciCapabilityChainStatus,
+    PciCapabilityContent, PciCapabilityKind, PciCapabilityReport, PciExpansionRom, PciField,
+    PciHeaderKind, PciHeaderType, PciInspection, PciInterruptPin, PciResource, PciSnapshot,
     PcieCapability, StatusRegister, capability_name,
 };
 use serde::Serialize;
@@ -182,6 +183,121 @@ pub fn render_inspection_text(
         PciField::NotApplicable => {
             writeln!(output, "  status: <not-applicable>").unwrap();
         }
+    }
+
+    match &details.cache_line_size {
+        PciField::Available(value) => {
+            writeln!(output, "  cache line size: {} bytes", u32::from(*value) * 4).unwrap();
+        }
+        PciField::Unavailable { reason } => {
+            writeln!(output, "  cache line size: <unavailable: {reason:?}>").unwrap();
+        }
+        PciField::NotApplicable => {
+            writeln!(output, "  cache line size: <not-applicable>").unwrap();
+        }
+    }
+
+    match &details.latency_timer {
+        PciField::Available(value) => {
+            writeln!(output, "  latency: {value}").unwrap();
+        }
+        PciField::Unavailable { reason } => {
+            writeln!(output, "  latency: <unavailable: {reason:?}>").unwrap();
+        }
+        PciField::NotApplicable => {
+            writeln!(output, "  latency: <not-applicable>").unwrap();
+        }
+    }
+
+    match &details.header_type {
+        PciField::Available(header_type) => {
+            writeln!(
+                output,
+                "  header type: {} multifunction={}",
+                render_header_kind(&header_type.kind),
+                header_type.multifunction
+            )
+            .unwrap();
+        }
+        PciField::Unavailable { reason } => {
+            writeln!(output, "  header type: <unavailable: {reason:?}>").unwrap();
+        }
+        PciField::NotApplicable => {
+            writeln!(output, "  header type: <not-applicable>").unwrap();
+        }
+    }
+
+    match &details.bist {
+        PciField::Available(bist) => {
+            writeln!(
+                output,
+                "  bist: capable={} start={} completion={}",
+                bist.capable, bist.start, bist.completion_code
+            )
+            .unwrap();
+        }
+        PciField::Unavailable { reason } => {
+            writeln!(output, "  bist: <unavailable: {reason:?}>").unwrap();
+        }
+        PciField::NotApplicable => {
+            writeln!(output, "  bist: <not-applicable>").unwrap();
+        }
+    }
+
+    match &details.expansion_rom {
+        PciField::Available(rom) => {
+            if rom.enable {
+                writeln!(output, "  expansion rom: 0x{:08x} enabled", rom.address).unwrap();
+            } else {
+                writeln!(output, "  expansion rom: disabled").unwrap();
+            }
+        }
+        PciField::Unavailable { reason } => {
+            writeln!(output, "  expansion rom: <unavailable: {reason:?}>").unwrap();
+        }
+        PciField::NotApplicable => {
+            writeln!(output, "  expansion rom: <not-applicable>").unwrap();
+        }
+    }
+
+    match (&details.interrupt_pin, &details.interrupt_line) {
+        (PciField::Available(pin), PciField::Available(line)) => {
+            writeln!(
+                output,
+                "  interrupt: pin={} line={}",
+                render_interrupt_pin(pin),
+                line
+            )
+            .unwrap();
+        }
+        _ => {
+            writeln!(output, "  interrupt: <unavailable>").unwrap();
+        }
+    }
+
+    match &details.cardbus_cis_pointer {
+        PciField::Available(value) => {
+            writeln!(output, "  cardbus cis pointer: 0x{value:08x}").unwrap();
+        }
+        PciField::Unavailable { reason } => {
+            writeln!(output, "  cardbus cis pointer: <unavailable: {reason:?}>").unwrap();
+        }
+        PciField::NotApplicable => {}
+    }
+
+    match &details.bridge {
+        PciField::Available(bridge) => {
+            writeln!(
+                output,
+                "  {}",
+                render_bridge_text(bridge).replace('\n', "\n  ")
+            )
+            .unwrap();
+        }
+        PciField::Unavailable { reason } => {
+            writeln!(output, "  bridge: <unavailable: {reason:?}>").unwrap();
+        }
+        PciField::NotApplicable => {}
     }
 
     match &details.resources {
@@ -894,6 +1010,125 @@ fn render_pcie_text(pcie: &PcieCapability) -> String {
     output
 }
 
+fn render_header_kind(kind: &PciHeaderKind) -> String {
+    match kind {
+        PciHeaderKind::Device => "device".to_owned(),
+        PciHeaderKind::Bridge => "bridge".to_owned(),
+        PciHeaderKind::CardBus => "cardbus".to_owned(),
+        PciHeaderKind::Unknown(value) => format!("unknown({value})"),
+    }
+}
+
+fn render_interrupt_pin(pin: &PciInterruptPin) -> String {
+    match pin {
+        PciInterruptPin::None => "none".to_owned(),
+        PciInterruptPin::IntA => "INTA".to_owned(),
+        PciInterruptPin::IntB => "INTB".to_owned(),
+        PciInterruptPin::IntC => "INTC".to_owned(),
+        PciInterruptPin::IntD => "INTD".to_owned(),
+        PciInterruptPin::Unknown(value) => format!("unknown({value})"),
+    }
+}
+
+fn render_window_size(size: u64) -> String {
+    if size >= 0x10_0000 && size % 0x10_0000 == 0 {
+        format!("{}M", size / 0x10_0000)
+    } else if size >= 0x400 && size % 0x400 == 0 {
+        format!("{}K", size / 0x400)
+    } else {
+        format!("{size}")
+    }
+}
+
+fn render_bridge_text(bridge: &PciBridgeHeader) -> String {
+    let mut output = format!(
+        "bus: primary={:02x} secondary={:02x} subordinate={:02x} sec_latency={}",
+        bridge.primary_bus,
+        bridge.secondary_bus,
+        bridge.subordinate_bus,
+        bridge.secondary_latency_timer
+    );
+
+    if bridge.io_enabled {
+        output.push_str(&format!(
+            "\nio behind bridge: 0x{:x}-0x{:x} [size={}]",
+            bridge.io_base,
+            bridge.io_limit,
+            render_window_size(u64::from(bridge.io_limit - bridge.io_base + 1))
+        ));
+    } else {
+        output.push_str("\nio behind bridge: disabled");
+    }
+
+    if bridge.memory_enabled {
+        output.push_str(&format!(
+            "\nmemory behind bridge: 0x{:x}-0x{:x} [size={}]",
+            bridge.memory_base,
+            bridge.memory_limit,
+            render_window_size(u64::from(bridge.memory_limit - bridge.memory_base + 1))
+        ));
+    } else {
+        output.push_str("\nmemory behind bridge: disabled");
+    }
+
+    if bridge.prefetchable_enabled {
+        output.push_str(&format!(
+            "\nprefetchable memory behind bridge: 0x{:x}-0x{:x} [size={}{}]",
+            bridge.prefetchable_base,
+            bridge.prefetchable_limit,
+            render_window_size(bridge.prefetchable_limit - bridge.prefetchable_base + 1),
+            if bridge.prefetchable_64_bit {
+                ", 64-bit"
+            } else {
+                ""
+            }
+        ));
+    } else {
+        output.push_str("\nprefetchable memory behind bridge: disabled");
+    }
+
+    let flag = |word: u16, bit: u16| if word & bit != 0 { "+" } else { "-" };
+    let status = bridge.secondary_status;
+    let devsel = match (status >> 9) & 0x3 {
+        0 => "fast",
+        1 => "medium",
+        2 => "slow",
+        _ => "unknown",
+    };
+    output.push_str(&format!(
+        "\nsecondary status: 66MHz{} FastB2B{} ParErr{} DEVSEL={} >TAbort{} <TAbort{} <MAbort{} >SERR{} <PERR{}",
+        flag(status, 0x0020),
+        flag(status, 0x0080),
+        flag(status, 0x0100),
+        devsel,
+        flag(status, 0x0800),
+        flag(status, 0x1000),
+        flag(status, 0x2000),
+        flag(status, 0x4000),
+        flag(status, 0x8000),
+    ));
+
+    let control = bridge.bridge_control;
+    output.push_str(&format!(
+        "\nbridge control: ParErr{} SERR{} ISA{} VGA{} VGA16{} MasterAbort{} SecBusReset{} FastB2B{} PrimDiscard{} SecDiscard{} DiscardTimeout{} DiscardSERR{} SplitResp{}",
+        flag(control, 0x0001),
+        flag(control, 0x0002),
+        flag(control, 0x0004),
+        flag(control, 0x0008),
+        flag(control, 0x0010),
+        flag(control, 0x0020),
+        flag(control, 0x0040),
+        flag(control, 0x0080),
+        flag(control, 0x0100),
+        flag(control, 0x0200),
+        flag(control, 0x0400),
+        flag(control, 0x0800),
+        flag(control, 0x1000),
+    ));
+
+    output
+}
+
 fn render_next_pointer(next: &Option<u16>) -> String {
     match next {
         Some(next) => format!("0x{next:03x}"),
@@ -1007,6 +1242,18 @@ pub fn render_inspection_json(
             capabilities: json_capabilities(&details.capabilities),
             command: json_command(&details.command),
             status: json_status(&details.status),
+            cache_line_size: json_field(&details.cache_line_size),
+            latency_timer: json_field(&details.latency_timer),
+            header_type: json_header_type(&details.header_type),
+            bist: json_bist(&details.bist),
+            expansion_rom: json_expansion_rom(&details.expansion_rom),
+            interrupt_line: json_field(&details.interrupt_line),
+            interrupt_pin: json_interrupt_pin(&details.interrupt_pin),
+            cardbus_cis_pointer: match &details.cardbus_cis_pointer {
+                PciField::NotApplicable => None,
+                other => Some(json_hex_field(other)),
+            },
+            bridge: json_bridge(&details.bridge),
         },
 
         config: config.map(json_config_space),
@@ -1037,6 +1284,17 @@ struct JsonDetails {
     capabilities: JsonField<JsonCapabilities>,
     command: JsonField<JsonCommand>,
     status: JsonField<JsonStatus>,
+    cache_line_size: JsonField<u8>,
+    latency_timer: JsonField<u8>,
+    header_type: JsonField<JsonHeaderType>,
+    bist: JsonField<JsonBist>,
+    expansion_rom: JsonField<JsonExpansionRom>,
+    interrupt_line: JsonField<u8>,
+    interrupt_pin: JsonField<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cardbus_cis_pointer: Option<JsonField<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bridge: Option<JsonField<JsonBridge>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1079,6 +1337,46 @@ struct JsonStatus {
     received_master_abort: bool,
     signaled_system_error: bool,
     detected_parity_error: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonHeaderType {
+    kind: String,
+    multifunction: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonBist {
+    capable: bool,
+    start: bool,
+    completion_code: u8,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonExpansionRom {
+    enable: bool,
+    address: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonBridgeWindow {
+    base: String,
+    limit: String,
+    size: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonBridge {
+    primary_bus: String,
+    secondary_bus: String,
+    subordinate_bus: String,
+    secondary_latency_timer: u8,
+    io: Option<JsonBridgeWindow>,
+    memory: Option<JsonBridgeWindow>,
+    prefetchable: Option<JsonBridgeWindow>,
+    prefetchable_64_bit: bool,
+    secondary_status: String,
+    bridge_control: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -2365,6 +2663,140 @@ fn json_status(field: &PciField<StatusRegister>) -> JsonField<JsonStatus> {
             value: None,
             reason: None,
         },
+    }
+}
+
+fn json_interrupt_pin(field: &PciField<PciInterruptPin>) -> JsonField<String> {
+    match field {
+        PciField::Available(pin) => JsonField {
+            state: "available",
+            value: Some(render_interrupt_pin(pin)),
+            reason: None,
+        },
+        PciField::Unavailable { reason } => JsonField {
+            state: "unavailable",
+            value: None,
+            reason: Some(format!("{reason:?}")),
+        },
+        PciField::NotApplicable => JsonField {
+            state: "not_applicable",
+            value: None,
+            reason: None,
+        },
+    }
+}
+
+fn json_header_type(field: &PciField<PciHeaderType>) -> JsonField<JsonHeaderType> {
+    match field {
+        PciField::Available(header_type) => JsonField {
+            state: "available",
+            value: Some(JsonHeaderType {
+                kind: render_header_kind(&header_type.kind),
+                multifunction: header_type.multifunction,
+            }),
+            reason: None,
+        },
+        PciField::Unavailable { reason } => JsonField {
+            state: "unavailable",
+            value: None,
+            reason: Some(format!("{reason:?}")),
+        },
+        PciField::NotApplicable => JsonField {
+            state: "not_applicable",
+            value: None,
+            reason: None,
+        },
+    }
+}
+
+fn json_bist(field: &PciField<PciBist>) -> JsonField<JsonBist> {
+    match field {
+        PciField::Available(bist) => JsonField {
+            state: "available",
+            value: Some(JsonBist {
+                capable: bist.capable,
+                start: bist.start,
+                completion_code: bist.completion_code,
+            }),
+            reason: None,
+        },
+        PciField::Unavailable { reason } => JsonField {
+            state: "unavailable",
+            value: None,
+            reason: Some(format!("{reason:?}")),
+        },
+        PciField::NotApplicable => JsonField {
+            state: "not_applicable",
+            value: None,
+            reason: None,
+        },
+    }
+}
+
+fn json_expansion_rom(field: &PciField<PciExpansionRom>) -> JsonField<JsonExpansionRom> {
+    match field {
+        PciField::Available(rom) => JsonField {
+            state: "available",
+            value: Some(JsonExpansionRom {
+                enable: rom.enable,
+                address: format!("0x{:08x}", rom.address),
+            }),
+            reason: None,
+        },
+        PciField::Unavailable { reason } => JsonField {
+            state: "unavailable",
+            value: None,
+            reason: Some(format!("{reason:?}")),
+        },
+        PciField::NotApplicable => JsonField {
+            state: "not_applicable",
+            value: None,
+            reason: None,
+        },
+    }
+}
+
+fn json_bridge_window(base: u64, limit: u64) -> JsonBridgeWindow {
+    JsonBridgeWindow {
+        base: format!("0x{base:x}"),
+        limit: format!("0x{limit:x}"),
+        size: render_window_size(limit - base + 1),
+    }
+}
+
+fn json_bridge(field: &PciField<PciBridgeHeader>) -> Option<JsonField<JsonBridge>> {
+    match field {
+        PciField::Available(bridge) => Some(JsonField {
+            state: "available",
+            value: Some(JsonBridge {
+                primary_bus: format!("{:02x}", bridge.primary_bus),
+                secondary_bus: format!("{:02x}", bridge.secondary_bus),
+                subordinate_bus: format!("{:02x}", bridge.subordinate_bus),
+                secondary_latency_timer: bridge.secondary_latency_timer,
+                io: bridge.io_enabled.then(|| {
+                    json_bridge_window(u64::from(bridge.io_base), u64::from(bridge.io_limit))
+                }),
+                memory: bridge.memory_enabled.then(|| {
+                    json_bridge_window(
+                        u64::from(bridge.memory_base),
+                        u64::from(bridge.memory_limit),
+                    )
+                }),
+                prefetchable: bridge.prefetchable_enabled.then(|| {
+                    json_bridge_window(bridge.prefetchable_base, bridge.prefetchable_limit)
+                }),
+                prefetchable_64_bit: bridge.prefetchable_64_bit,
+                secondary_status: format!("0x{:04x}", bridge.secondary_status),
+                bridge_control: format!("0x{:04x}", bridge.bridge_control),
+            }),
+            reason: None,
+        }),
+        PciField::Unavailable { reason } => Some(JsonField {
+            state: "unavailable",
+            value: None,
+            reason: Some(format!("{reason:?}")),
+        }),
+        PciField::NotApplicable => None,
     }
 }
 

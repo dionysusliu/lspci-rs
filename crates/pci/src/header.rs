@@ -191,16 +191,6 @@ fn read_byte_field(
     Ok(bytes[0])
 }
 
-fn read_word_field_at(
-    snapshot: &ConfigSpaceSnapshot,
-    offset: u32,
-) -> Result<u16, PciFieldUnavailableReason> {
-    let bytes = snapshot
-        .read(offset, 2)
-        .map_err(|_| PciFieldUnavailableReason::ReadError)?;
-    Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
-}
-
 fn read_dword_field(
     snapshot: &ConfigSpaceSnapshot,
     offset: u32,
