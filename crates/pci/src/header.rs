@@ -344,15 +344,15 @@ pub(crate) fn bridge_header_field(snapshot: &ConfigSpaceSnapshot) -> PciField<Pc
         secondary_latency_timer,
         io_base,
         io_limit,
-        io_enabled: io_base_raw != 0 || io_limit_raw != 0,
+        io_enabled: io_base <= io_limit,
         secondary_status,
         memory_base,
         memory_limit,
-        memory_enabled: memory_base_raw != 0 || memory_limit_raw != 0,
+        memory_enabled: memory_base <= memory_limit,
         prefetchable_base,
         prefetchable_limit,
         prefetchable_64_bit,
-        prefetchable_enabled: pref_base_lo != 0 || pref_limit_lo != 0,
+        prefetchable_enabled: prefetchable_base <= prefetchable_limit,
         bridge_control,
     })
 }
