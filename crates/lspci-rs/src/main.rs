@@ -44,7 +44,7 @@ fn main() {
         },
 
         Command::Tui => {
-            if let Err(error) = tui::run_tui() {
+            if let Err(error) = tui::run_tui(color) {
                 eprintln!("{error}");
                 std::process::exit(1);
             }

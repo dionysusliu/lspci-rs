@@ -1,3 +1,4 @@
+mod styled;
 mod tree;
 mod ui;
 
@@ -10,6 +11,7 @@ use crossterm::terminal::{
 };
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
+use ratatui::text::Text;
 
 use pci::PciSession;
 
@@ -33,14 +35,15 @@ pub struct App {
     pub visible: Vec<usize>,
     pub cursor: usize,
     pub tree_offset: usize,
-    pub detail: String,
+    pub detail: Text<'static>,
     pub detail_scroll: u16,
     pub mode: Mode,
     pub filter_input: String,
+    pub color: ColorMode,
 }
 
 impl App {
-    fn new(session: PciSession, model: tree::TreeModel) -> App {
+    fn new(session: PciSession, model: tree::TreeModel, color: ColorMode) -> App {
         let visible = model.visible_rows();
         let first_device = visible
             .iter()
@@ -52,10 +55,11 @@ impl App {
             visible,
             cursor: first_device,
             tree_offset: 0,
-            detail: String::new(),
+            detail: Text::default(),
             detail_scroll: 0,
             mode: Mode::Normal,
             filter_input: String::new(),
+            color,
         };
         app.load_detail();
         app
@@ -76,12 +80,12 @@ impl App {
             .get(self.cursor)
             .and_then(|row| self.model.rows[*row].address);
         let Some(address) = address else {
-            self.detail = String::new();
+            self.detail = Text::default();
             return;
         };
-        self.detail =
-            crate::render_device_detail(&mut self.session, address, None, ColorMode::Never)
-                .unwrap_or_else(|error| format!("failed to load details: {error}"));
+        let text = crate::render_device_detail(&mut self.session, address, None, self.color)
+            .unwrap_or_else(|error| format!("failed to load details: {error}"));
+        self.detail = styled::text_from_ansi(&text);
     }
 
     fn move_cursor(&mut self, delta: isize) {
@@ -137,7 +141,7 @@ impl App {
                 self.detail_scroll = self.detail_scroll.saturating_sub(10);
             }
             KeyCode::PageDown => {
-                let lines = self.detail.lines().count() as u16;
+                let lines = self.detail.lines.len() as u16;
                 self.detail_scroll = (self.detail_scroll + 10).min(lines.saturating_sub(1));
             }
             KeyCode::Char('/') => {
@@ -182,7 +186,7 @@ impl App {
     }
 }
 
-pub fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run_tui(color: ColorMode) -> Result<(), Box<dyn std::error::Error>> {
     if !std::io::stdout().is_terminal() {
         return Err("tui requires an interactive terminal".into());
     }
@@ -191,7 +195,7 @@ pub fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
     let snapshot = session.scan()?;
     let windows = collect_bridge_windows(&mut session, &snapshot);
     let model = tree::TreeModel::build(&snapshot, &windows);
-    let mut app = App::new(session, model);
+    let mut app = App::new(session, model, color);
 
     enable_raw_mode()?;
     let _guard = TerminalGuard;
