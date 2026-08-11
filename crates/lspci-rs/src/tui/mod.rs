@@ -85,6 +85,11 @@ impl App {
         };
         let text = crate::render_device_detail(&mut self.session, address, None, self.color)
             .unwrap_or_else(|error| format!("failed to load details: {error}"));
+        let text = if self.color.enabled() {
+            styled::colorize_detail(&text)
+        } else {
+            text
+        };
         self.detail = styled::text_from_ansi(&text);
     }
 

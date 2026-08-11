@@ -1,6 +1,28 @@
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 
+/// Dim field labels (before ': ') and colorize unavailable values red.
+/// Called before text_from_ansi to add TUI-specific coloring on top of the
+/// CLI's existing ANSI output.
+pub fn colorize_detail(input: &str) -> String {
+    input
+        .lines()
+        .map(|line| {
+            let Some(pos) = line.find(": ") else {
+                return line.to_owned();
+            };
+            let (label, rest) = line.split_at(pos);
+            let value = &rest[2..];
+            if value.contains("<unavailable:") {
+                format!("\x1b[2m{label}\x1b[0m: \x1b[31m{value}\x1b[0m")
+            } else {
+                format!("\x1b[2m{label}\x1b[0m: {value}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Convert ANSI-colored text into an owned ratatui Text.
 /// Only SGR sequences are interpreted; unknown codes are ignored.
 pub fn text_from_ansi(input: &str) -> Text<'static> {
