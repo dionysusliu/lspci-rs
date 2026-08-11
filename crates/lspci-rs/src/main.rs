@@ -80,22 +80,36 @@ fn run_show(
     color: crate::color::ColorMode,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let mut session = PciSession::new()?;
-    let inspection = session.inspect(address)?;
+    match format {
+        OutputFormat::Text => render_device_detail(&mut session, address, config, color),
+        OutputFormat::Json => {
+            let inspection = session.inspect(address)?;
+            let snapshot = match config {
+                Some(level) => Some(session.read_config(address, level.into())?),
+                None => None,
+            };
+            Ok(output::render_inspection_json(
+                &inspection,
+                snapshot.as_ref(),
+            )?)
+        }
+    }
+}
 
+pub(crate) fn render_device_detail(
+    session: &mut PciSession,
+    address: PciAddress,
+    config: Option<ConfigLevel>,
+    color: crate::color::ColorMode,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let inspection = session.inspect(address)?;
     let snapshot = match config {
         Some(level) => Some(session.read_config(address, level.into())?),
         None => None,
     };
-
-    match format {
-        OutputFormat::Text => Ok(output::render_inspection_text(
-            &inspection,
-            snapshot.as_ref(),
-            color,
-        )),
-        OutputFormat::Json => Ok(output::render_inspection_json(
-            &inspection,
-            snapshot.as_ref(),
-        )?),
-    }
+    Ok(output::render_inspection_text(
+        &inspection,
+        snapshot.as_ref(),
+        color,
+    ))
 }

@@ -40,7 +40,7 @@
   与 `pub fn collect_bridge_windows(session, snapshot) -> Vec<(PciAddress, BridgeWindow)>`，
   CLI tree 渲染与 TUI 树模型共用；两侧仅保留各自呈现逻辑。
 - `run_show` 中"按地址生成详情文本"抽取为
-  `render_device_detail(session, snapshot, address, color: ColorMode) -> String`，
+  `render_device_detail(session, address, config: Option<ConfigLevel>, color: ColorMode) -> String`，
   CLI show 与 TUI 共用（CLI 传用户 `--color`，TUI 传 `ColorMode::Never`）。
 
 树节点结构：
