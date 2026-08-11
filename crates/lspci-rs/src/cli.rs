@@ -35,6 +35,9 @@ pub enum Command {
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         format: OutputFormat,
     },
+
+    /// Interactive PCI device browser
+    Tui,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]

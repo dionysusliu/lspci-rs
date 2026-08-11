@@ -2,6 +2,7 @@ mod cli;
 mod color;
 mod output;
 mod tree;
+mod tui;
 
 use clap::Parser;
 use cli::Cli;
@@ -41,6 +42,13 @@ fn main() {
                 std::process::exit(1);
             }
         },
+
+        Command::Tui => {
+            if let Err(error) = tui::run_tui() {
+                eprintln!("{error}");
+                std::process::exit(1);
+            }
+        }
     }
 }
 
