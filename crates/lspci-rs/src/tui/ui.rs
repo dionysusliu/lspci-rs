@@ -101,11 +101,16 @@ fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
         .iter()
         .filter(|row| row.address.is_some())
         .count();
-    let shown = app
-        .visible
-        .iter()
-        .filter(|row_index| app.model.rows[**row_index].address.is_some())
-        .count();
+    let shown = if app.model.filter.is_empty() {
+        total
+    } else {
+        let lower = app.model.filter.to_lowercase();
+        app.model
+            .rows
+            .iter()
+            .filter(|row| row.address.is_some() && row.label.to_lowercase().contains(&lower))
+            .count()
+    };
     let text = match app.mode {
         Mode::Normal => {
             let mut text = format!(
