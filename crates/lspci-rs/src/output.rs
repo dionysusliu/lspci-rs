@@ -178,8 +178,7 @@ pub fn render_inspection_text(
         PciField::Unavailable { reason } => {
             writeln!(
                 output,
-                "{}: {}",
-                "$1",
+                "  control: {}",
                 palette.unavailable(&format!("<unavailable: {reason:?}>"))
             )
             .unwrap();
@@ -196,8 +195,7 @@ pub fn render_inspection_text(
         PciField::Unavailable { reason } => {
             writeln!(
                 output,
-                "{}: {}",
-                "$1",
+                "  status: {}",
                 palette.unavailable(&format!("<unavailable: {reason:?}>"))
             )
             .unwrap();
@@ -214,8 +212,7 @@ pub fn render_inspection_text(
         PciField::Unavailable { reason } => {
             writeln!(
                 output,
-                "{}: {}",
-                "$1",
+                "  cache line size: {}",
                 palette.unavailable(&format!("<unavailable: {reason:?}>"))
             )
             .unwrap();
@@ -232,8 +229,7 @@ pub fn render_inspection_text(
         PciField::Unavailable { reason } => {
             writeln!(
                 output,
-                "{}: {}",
-                "$1",
+                "  latency: {}",
                 palette.unavailable(&format!("<unavailable: {reason:?}>"))
             )
             .unwrap();
@@ -256,8 +252,7 @@ pub fn render_inspection_text(
         PciField::Unavailable { reason } => {
             writeln!(
                 output,
-                "{}: {}",
-                "$1",
+                "  header type: {}",
                 palette.unavailable(&format!("<unavailable: {reason:?}>"))
             )
             .unwrap();
@@ -279,8 +274,7 @@ pub fn render_inspection_text(
         PciField::Unavailable { reason } => {
             writeln!(
                 output,
-                "{}: {}",
-                "$1",
+                "  bist: {}",
                 palette.unavailable(&format!("<unavailable: {reason:?}>"))
             )
             .unwrap();
@@ -301,8 +295,7 @@ pub fn render_inspection_text(
         PciField::Unavailable { reason } => {
             writeln!(
                 output,
-                "{}: {}",
-                "$1",
+                "  expansion rom: {}",
                 palette.unavailable(&format!("<unavailable: {reason:?}>"))
             )
             .unwrap();
@@ -334,8 +327,7 @@ pub fn render_inspection_text(
         PciField::Unavailable { reason } => {
             writeln!(
                 output,
-                "{}: {}",
-                "$1",
+                "  cardbus cis pointer: {}",
                 palette.unavailable(&format!("<unavailable: {reason:?}>"))
             )
             .unwrap();
@@ -355,8 +347,7 @@ pub fn render_inspection_text(
         PciField::Unavailable { reason } => {
             writeln!(
                 output,
-                "{}: {}",
-                "$1",
+                "  bridge: {}",
                 palette.unavailable(&format!("<unavailable: {reason:?}>"))
             )
             .unwrap();
@@ -386,8 +377,7 @@ pub fn render_inspection_text(
         PciField::Unavailable { reason } => {
             writeln!(
                 output,
-                "{}: {}",
-                "$1",
+                "  resources: {}",
                 palette.unavailable(&format!("<unavailable: {reason:?}>"))
             )
             .unwrap();
@@ -421,8 +411,7 @@ pub fn render_inspection_text(
         PciField::Unavailable { reason } => {
             writeln!(
                 output,
-                "{}: {}",
-                "$1",
+                "  capabilities: {}",
                 palette.unavailable(&format!("<unavailable: {reason:?}>"))
             )
             .unwrap();

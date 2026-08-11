@@ -16,18 +16,17 @@ pub fn render_tree(
 
     let mut windows: Vec<(PciAddress, BridgeWindow)> = Vec::new();
     for device in snapshot.devices() {
-        if device.class_id == 0x0604 {
-            if let Ok(config) = session.read_config(device.address, ConfigReadLevel::Header) {
-                if let Ok(bytes) = config.read(0x19, 2) {
-                    windows.push((
-                        device.address,
-                        BridgeWindow {
-                            secondary: bytes[0],
-                            subordinate: bytes[1],
-                        },
-                    ));
-                }
-            }
+        if device.class_id == 0x0604
+            && let Ok(config) = session.read_config(device.address, ConfigReadLevel::Header)
+            && let Ok(bytes) = config.read(0x19, 2)
+        {
+            windows.push((
+                device.address,
+                BridgeWindow {
+                    secondary: bytes[0],
+                    subordinate: bytes[1],
+                },
+            ));
         }
     }
 
@@ -52,7 +51,7 @@ pub fn render_tree(
                 &windows,
                 bus,
                 0,
-                &String::new(),
+                "",
             );
         }
     }
