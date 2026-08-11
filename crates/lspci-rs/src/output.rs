@@ -682,7 +682,7 @@ fn render_aer_text(aer: &AerCapability) -> String {
         ));
         let status = root.status;
         output.push_str(&format!(
-            "\n          RootErrSta: ErrCor{} MultErrCor{} NonFatalErr{} MultNonFatal{} FirstUEFatal{} FatalErr{} MultFatal{} AdvErrInt=0x{:02x}",
+            "\n          RootErrSta: ErrCor{} MultErrCor{} NonFatalErr{} MultNonFatal{} FirstUEFatal{} NonFatalMsg{} FatalMsg{} AdvErrInt=0x{:02x}",
             flag(status, 0x0000_0001),
             flag(status, 0x0000_0002),
             flag(status, 0x0000_0004),

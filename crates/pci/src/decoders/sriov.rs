@@ -59,6 +59,10 @@ pub fn decode_sriov(snapshot: &ConfigSpaceSnapshot, offset: u16) -> Option<Sriov
     let mut index = 0;
     while index < 6 {
         let raw = raw_bars[index];
+        if raw == 0 {
+            index += 1;
+            continue;
+        }
         if raw & 0x1 != 0 {
             vf_bars[index] = Some(SriovVfBar {
                 kind: SriovVfBarKind::Io,
