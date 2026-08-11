@@ -1,6 +1,7 @@
 mod cli;
 mod color;
 mod output;
+mod tree;
 
 use clap::Parser;
 use cli::Cli;
@@ -32,6 +33,14 @@ fn main() {
                 std::process::exit(1);
             }
         },
+
+        Command::Tree { format } => match run_tree(format, color) {
+            Ok(output) => print!("{output}"),
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::exit(1);
+            }
+        },
     }
 }
 
@@ -45,6 +54,22 @@ fn run_list(
     match format {
         OutputFormat::Text => Ok(output::render_text(&snapshot, color)),
         OutputFormat::Json => Ok(output::render_json(&snapshot)?),
+    }
+}
+
+fn run_tree(
+    format: OutputFormat,
+    color: crate::color::ColorMode,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mut session = PciSession::new()?;
+    let snapshot = session.scan()?;
+    match format {
+        OutputFormat::Text => Ok(tree::render_tree(&mut session, &snapshot, color)?),
+        OutputFormat::Json => Ok(tree::render_tree(
+            &mut session,
+            &snapshot,
+            crate::color::ColorMode::Never,
+        )?),
     }
 }
 
