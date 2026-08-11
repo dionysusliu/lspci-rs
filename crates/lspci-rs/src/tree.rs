@@ -95,6 +95,7 @@ fn render_bus(
             "{:02x}:{:02x}.{}",
             device.address.bus, device.address.slot, device.address.function
         );
+        let device_text = format!("{} {}", device.vendor_name, device.device_name);
         match window {
             Some(window) => {
                 output.push_str(&format!(
@@ -104,7 +105,7 @@ fn render_bus(
                         "-[{:02x}-{:02x}]",
                         window.secondary, window.subordinate
                     )),
-                    device.device_name
+                    device_text
                 ));
                 let child_prefix = if depth == 0 {
                     "           |  ".to_owned()
@@ -125,7 +126,7 @@ fn render_bus(
                 output.push_str(&format!(
                     "{connector}{} {}\n",
                     palette.address(&address_text),
-                    device.device_name
+                    device_text
                 ));
             }
         }
