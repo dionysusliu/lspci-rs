@@ -1,10 +1,11 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, Paragraph};
 
 use super::{App, Mode};
+use crate::color::ColorMode;
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
@@ -58,8 +59,19 @@ fn draw_tree(frame: &mut Frame, app: &mut App, area: Rect) {
         if selected {
             style = style.add_modifier(Modifier::REVERSED);
         }
-        let text = format!("{}{}{}", "  ".repeat(row.depth), marker, row.label);
-        items.push(ListItem::new(Line::from(text)).style(style));
+        let prefix = format!("{}{}", "  ".repeat(row.depth), marker);
+        let colored = !matches!(app.color, ColorMode::Never);
+        let line = match (colored, row.label.split_once(" -[")) {
+            (true, Some((head, tail))) => Line::from(vec![
+                Span::raw(format!("{prefix}{head}")),
+                Span::styled(
+                    format!(" -[{tail}"),
+                    Style::default().add_modifier(Modifier::DIM),
+                ),
+            ]),
+            _ => Line::from(format!("{prefix}{}", row.label)),
+        };
+        items.push(ListItem::new(line).style(style));
     }
 
     let list = List::new(items).block(Block::bordered().title(top_level_label(app)));
