@@ -123,6 +123,13 @@ impl App {
                     }
                 }
             }
+            KeyCode::PageUp => {
+                self.detail_scroll = self.detail_scroll.saturating_sub(10);
+            }
+            KeyCode::PageDown => {
+                let lines = self.detail.lines().count() as u16;
+                self.detail_scroll = (self.detail_scroll + 10).min(lines.saturating_sub(1));
+            }
             _ => {}
         }
         Flow::Continue

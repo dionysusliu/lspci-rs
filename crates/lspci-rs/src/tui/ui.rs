@@ -1,8 +1,8 @@
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::Line;
 use ratatui::widgets::{Block, List, ListItem, Paragraph};
+use ratatui::Frame;
 
 use super::{App, Mode};
 
@@ -88,14 +88,33 @@ fn draw_detail(frame: &mut Frame, app: &App, area: Rect) {
             )
         })
         .unwrap_or_else(|| String::from("detail"));
-    let paragraph = Paragraph::new(app.detail.clone()).block(Block::bordered().title(title));
+    let paragraph = Paragraph::new(app.detail.clone())
+        .scroll((app.detail_scroll, 0))
+        .block(Block::bordered().title(title));
     frame.render_widget(paragraph, area);
 }
 
 fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
+    let total = app
+        .model
+        .rows
+        .iter()
+        .filter(|row| row.address.is_some())
+        .count();
+    let shown = app
+        .visible
+        .iter()
+        .filter(|row_index| app.model.rows[**row_index].address.is_some())
+        .count();
     let text = match app.mode {
         Mode::Normal => {
-            String::from(" j/k move  l/h expand/collapse  / filter  PgUp/PgDn scroll  q quit")
+            let mut text = format!(
+                " j/k move  l/h expand/collapse  / filter  PgUp/PgDn scroll  q quit  devices: {shown}/{total}"
+            );
+            if !app.model.filter.is_empty() {
+                text.push_str(&format!("  filter: {}", app.model.filter));
+            }
+            text
         }
         Mode::Filter => format!(" filter: {}█  Enter apply  Esc clear", app.filter_input),
     };
