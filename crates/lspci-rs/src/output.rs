@@ -651,11 +651,30 @@ fn render_aer_text(aer: &AerCapability) -> String {
         aer_flag_text(aer.ce_mask, AER_CE_BITS)
     ));
     output.push_str(&format!("\n          HeaderLog: {}", header_log.join(" ")));
-    if let (Some(command), Some(status), Some(source)) =
-        (aer.root_command, aer.root_status, aer.error_source_id)
-    {
+    if let Some(root) = &aer.root {
+        let flag = |word: u32, bit: u32| if word & bit != 0 { "+" } else { "-" };
         output.push_str(&format!(
-            "\n          RootCmd: 0x{command:08x} RootSta: 0x{status:08x} ErrSrc: 0x{source:08x}"
+            "\n          RootErrCmd: CorrErr{} NonFatalErr{} FatalErr{}",
+            flag(root.command, 0x0000_0001),
+            flag(root.command, 0x0000_0002),
+            flag(root.command, 0x0000_0004),
+        ));
+        let status = root.status;
+        output.push_str(&format!(
+            "\n          RootErrSta: ErrCor{} MultErrCor{} NonFatalErr{} MultNonFatal{} FirstUEFatal{} FatalErr{} MultFatal{} AdvErrInt=0x{:02x}",
+            flag(status, 0x0000_0001),
+            flag(status, 0x0000_0002),
+            flag(status, 0x0000_0004),
+            flag(status, 0x0000_0008),
+            flag(status, 0x0000_0010),
+            flag(status, 0x0000_0020),
+            flag(status, 0x0000_0040),
+            (status >> 27) & 0x1f,
+        ));
+        output.push_str(&format!(
+            "\n          ErrSrc: CE=0x{:04x} NFFatal=0x{:04x}",
+            root.error_source_id & 0x0000_ffff,
+            (root.error_source_id >> 16) & 0x0000_ffff,
         ));
     }
     output
@@ -1847,6 +1866,14 @@ struct JsonSriov {
 }
 
 #[derive(Debug, Serialize)]
+struct JsonAerRoot {
+    command: String,
+    status: String,
+    ce_source_id: String,
+    nf_fatal_source_id: String,
+}
+
+#[derive(Debug, Serialize)]
 struct JsonAer {
     version: u8,
     first_error_pointer: String,
@@ -1864,13 +1891,7 @@ struct JsonAer {
     header_log: Vec<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    root_command: Option<String>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    root_status: Option<String>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error_source_id: Option<String>,
+    root: Option<JsonAerRoot>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2532,9 +2553,12 @@ fn json_capability_content(content: &PciCapabilityContent) -> JsonCapabilityCont
                 .iter()
                 .map(|entry| format!("{entry:08x}"))
                 .collect(),
-            root_command: aer.root_command.map(|value| format!("0x{value:08x}")),
-            root_status: aer.root_status.map(|value| format!("0x{value:08x}")),
-            error_source_id: aer.error_source_id.map(|value| format!("0x{value:08x}")),
+            root: aer.root.as_ref().map(|root| JsonAerRoot {
+                command: format!("0x{:08x}", root.command),
+                status: format!("0x{:08x}", root.status),
+                ce_source_id: format!("0x{:04x}", root.error_source_id & 0x0000_ffff),
+                nf_fatal_source_id: format!("0x{:04x}", (root.error_source_id >> 16) & 0x0000_ffff),
+            }),
         }),
         PciCapabilityContent::Ltr(ltr) => JsonCapabilityContent::Ltr(JsonLtr {
             snoop_value: ltr.snoop_value,

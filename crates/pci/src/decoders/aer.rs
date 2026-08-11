@@ -32,6 +32,13 @@ pub const AER_CE_BITS: &[(u8, &str)] = &[
 ];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AerRootGroup {
+    pub command: u32,
+    pub status: u32,
+    pub error_source_id: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AerCapability {
     pub version: u8,
     pub ue_status: u32,
@@ -42,9 +49,7 @@ pub struct AerCapability {
     pub capabilities_control: u32,
     pub first_error_pointer: u8,
     pub header_log: [u32; 4],
-    pub root_command: Option<u32>,
-    pub root_status: Option<u32>,
-    pub error_source_id: Option<u32>,
+    pub root: Option<AerRootGroup>,
 }
 
 pub fn decode_aer(snapshot: &ConfigSpaceSnapshot, offset: u16) -> Option<AerCapability> {
@@ -71,14 +76,17 @@ pub fn decode_aer(snapshot: &ConfigSpaceSnapshot, offset: u16) -> Option<AerCapa
         .map(|bytes| bytes[0] & 0x7f == 1)
         .unwrap_or(false);
 
-    let (root_command, root_status, error_source_id) = if is_bridge {
-        (
-            Some(read_dword(snapshot, base + 0x2c).ok()?),
-            Some(read_dword(snapshot, base + 0x30).ok()?),
-            Some(read_dword(snapshot, base + 0x34).ok()?),
-        )
+    let root = if is_bridge {
+        let command = read_dword(snapshot, base + 0x2c).ok()?;
+        let status = read_dword(snapshot, base + 0x30).ok()?;
+        let error_source_id = read_dword(snapshot, base + 0x34).ok()?;
+        Some(AerRootGroup {
+            command,
+            status,
+            error_source_id,
+        })
     } else {
-        (None, None, None)
+        None
     };
 
     Some(AerCapability {
@@ -91,8 +99,6 @@ pub fn decode_aer(snapshot: &ConfigSpaceSnapshot, offset: u16) -> Option<AerCapa
         capabilities_control,
         first_error_pointer: ((capabilities_control >> 8) & 0x001f) as u8,
         header_log,
-        root_command,
-        root_status,
-        error_source_id,
+        root,
     })
 }
