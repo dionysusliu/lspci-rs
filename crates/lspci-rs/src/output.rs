@@ -8,7 +8,10 @@ use pci::{
 use serde::Serialize;
 use std::fmt::{Display, LowerHex, Write as _};
 
-pub fn render_text(snapshot: &PciSnapshot) -> String {
+use crate::color::{ColorMode, Palette};
+
+pub fn render_text(snapshot: &PciSnapshot, color: ColorMode) -> String {
+    let palette = Palette::new(color);
     let mut output = String::new();
 
     let mut devices: Vec<_> = snapshot.devices().iter().collect();
@@ -24,11 +27,11 @@ pub fn render_text(snapshot: &PciSnapshot) -> String {
     for device in devices {
         writeln!(
             output,
-            "{} vendor=0x{:04x} device=0x{:04x} class=0x{:04x} {} / {} / {}",
-            device.address,
-            device.vendor_id,
-            device.device_id,
-            device.class_id,
+            "{} {} {} {} {} / {} / {}",
+            palette.address(&device.address.to_string()),
+            palette.dim(&format!("vendor=0x{:04x}", device.vendor_id)),
+            palette.dim(&format!("device=0x{:04x}", device.device_id)),
+            palette.dim(&format!("class=0x{:04x}", device.class_id)),
             device.vendor_name,
             device.device_name,
             device.class_name,
@@ -103,13 +106,20 @@ pub fn render_json(snapshot: &PciSnapshot) -> Result<String, serde_json::Error> 
 pub fn render_inspection_text(
     inspection: &PciInspection,
     config: Option<&ConfigSpaceSnapshot>,
+    color: ColorMode,
 ) -> String {
+    let palette = Palette::new(color);
     let device = &inspection.device;
     let details = &inspection.details;
 
     let mut output = String::new();
 
-    writeln!(output, "PCI device {}", device.address).unwrap();
+    writeln!(
+        output,
+        "PCI device {}",
+        palette.address(&device.address.to_string())
+    )
+    .unwrap();
 
     writeln!(
         output,
@@ -166,7 +176,13 @@ pub fn render_inspection_text(
             writeln!(output, "  control: {}", render_command_text(command)).unwrap();
         }
         PciField::Unavailable { reason } => {
-            writeln!(output, "  control: <unavailable: {reason:?}>").unwrap();
+            writeln!(
+                output,
+                "{}: {}",
+                "$1",
+                palette.unavailable(&format!("<unavailable: {reason:?}>"))
+            )
+            .unwrap();
         }
         PciField::NotApplicable => {
             writeln!(output, "  control: <not-applicable>").unwrap();
@@ -178,7 +194,13 @@ pub fn render_inspection_text(
             writeln!(output, "  status: {}", render_status_text(status)).unwrap();
         }
         PciField::Unavailable { reason } => {
-            writeln!(output, "  status: <unavailable: {reason:?}>").unwrap();
+            writeln!(
+                output,
+                "{}: {}",
+                "$1",
+                palette.unavailable(&format!("<unavailable: {reason:?}>"))
+            )
+            .unwrap();
         }
         PciField::NotApplicable => {
             writeln!(output, "  status: <not-applicable>").unwrap();
@@ -190,7 +212,13 @@ pub fn render_inspection_text(
             writeln!(output, "  cache line size: {} bytes", u32::from(*value) * 4).unwrap();
         }
         PciField::Unavailable { reason } => {
-            writeln!(output, "  cache line size: <unavailable: {reason:?}>").unwrap();
+            writeln!(
+                output,
+                "{}: {}",
+                "$1",
+                palette.unavailable(&format!("<unavailable: {reason:?}>"))
+            )
+            .unwrap();
         }
         PciField::NotApplicable => {
             writeln!(output, "  cache line size: <not-applicable>").unwrap();
@@ -202,7 +230,13 @@ pub fn render_inspection_text(
             writeln!(output, "  latency: {value}").unwrap();
         }
         PciField::Unavailable { reason } => {
-            writeln!(output, "  latency: <unavailable: {reason:?}>").unwrap();
+            writeln!(
+                output,
+                "{}: {}",
+                "$1",
+                palette.unavailable(&format!("<unavailable: {reason:?}>"))
+            )
+            .unwrap();
         }
         PciField::NotApplicable => {
             writeln!(output, "  latency: <not-applicable>").unwrap();
@@ -220,7 +254,13 @@ pub fn render_inspection_text(
             .unwrap();
         }
         PciField::Unavailable { reason } => {
-            writeln!(output, "  header type: <unavailable: {reason:?}>").unwrap();
+            writeln!(
+                output,
+                "{}: {}",
+                "$1",
+                palette.unavailable(&format!("<unavailable: {reason:?}>"))
+            )
+            .unwrap();
         }
         PciField::NotApplicable => {
             writeln!(output, "  header type: <not-applicable>").unwrap();
@@ -237,7 +277,13 @@ pub fn render_inspection_text(
             .unwrap();
         }
         PciField::Unavailable { reason } => {
-            writeln!(output, "  bist: <unavailable: {reason:?}>").unwrap();
+            writeln!(
+                output,
+                "{}: {}",
+                "$1",
+                palette.unavailable(&format!("<unavailable: {reason:?}>"))
+            )
+            .unwrap();
         }
         PciField::NotApplicable => {
             writeln!(output, "  bist: <not-applicable>").unwrap();
@@ -253,7 +299,13 @@ pub fn render_inspection_text(
             }
         }
         PciField::Unavailable { reason } => {
-            writeln!(output, "  expansion rom: <unavailable: {reason:?}>").unwrap();
+            writeln!(
+                output,
+                "{}: {}",
+                "$1",
+                palette.unavailable(&format!("<unavailable: {reason:?}>"))
+            )
+            .unwrap();
         }
         PciField::NotApplicable => {
             writeln!(output, "  expansion rom: <not-applicable>").unwrap();
@@ -280,7 +332,13 @@ pub fn render_inspection_text(
             writeln!(output, "  cardbus cis pointer: 0x{value:08x}").unwrap();
         }
         PciField::Unavailable { reason } => {
-            writeln!(output, "  cardbus cis pointer: <unavailable: {reason:?}>").unwrap();
+            writeln!(
+                output,
+                "{}: {}",
+                "$1",
+                palette.unavailable(&format!("<unavailable: {reason:?}>"))
+            )
+            .unwrap();
         }
         PciField::NotApplicable => {}
     }
@@ -295,7 +353,13 @@ pub fn render_inspection_text(
             .unwrap();
         }
         PciField::Unavailable { reason } => {
-            writeln!(output, "  bridge: <unavailable: {reason:?}>").unwrap();
+            writeln!(
+                output,
+                "{}: {}",
+                "$1",
+                palette.unavailable(&format!("<unavailable: {reason:?}>"))
+            )
+            .unwrap();
         }
         PciField::NotApplicable => {}
     }
@@ -320,7 +384,13 @@ pub fn render_inspection_text(
         }
 
         PciField::Unavailable { reason } => {
-            writeln!(output, "  resources: <unavailable: {reason:?}>").unwrap();
+            writeln!(
+                output,
+                "{}: {}",
+                "$1",
+                palette.unavailable(&format!("<unavailable: {reason:?}>"))
+            )
+            .unwrap();
         }
 
         PciField::NotApplicable => {
@@ -334,12 +404,14 @@ pub fn render_inspection_text(
 
             render_capability_group_text(
                 &mut output,
+                &palette,
                 "standard",
                 &report.standard,
                 &report.standard_status,
             );
             render_capability_group_text(
                 &mut output,
+                &palette,
                 "extended",
                 &report.extended,
                 &report.extended_status,
@@ -347,7 +419,13 @@ pub fn render_inspection_text(
         }
 
         PciField::Unavailable { reason } => {
-            writeln!(output, "  capabilities: <unavailable: {reason:?}>").unwrap();
+            writeln!(
+                output,
+                "{}: {}",
+                "$1",
+                palette.unavailable(&format!("<unavailable: {reason:?}>"))
+            )
+            .unwrap();
         }
 
         PciField::NotApplicable => {
@@ -356,7 +434,7 @@ pub fn render_inspection_text(
     }
 
     if let Some(snapshot) = config {
-        render_config_space_text(&mut output, snapshot);
+        render_config_space_text(&mut output, &palette, snapshot);
     }
 
     output
@@ -364,17 +442,24 @@ pub fn render_inspection_text(
 
 fn render_capability_group_text(
     output: &mut String,
+    palette: &Palette,
     label: &str,
     capabilities: &[PciCapability],
     status: &PciCapabilityChainStatus,
 ) {
-    writeln!(output, "    {label}: chain={}", render_chain_status(status)).unwrap();
+    writeln!(
+        output,
+        "    {}: chain={}",
+        palette.dim(label),
+        render_chain_status(status)
+    )
+    .unwrap();
 
     for capability in capabilities {
         writeln!(
             output,
             "      {} id=0x{:04x} offset=0x{:03x} next={} state={:?}",
-            capability_name(&capability.kind, capability.id),
+            palette.capability(capability_name(&capability.kind, capability.id)),
             capability.id,
             capability.offset,
             render_next_pointer(&capability.next),
@@ -1246,7 +1331,11 @@ fn render_chain_status(status: &PciCapabilityChainStatus) -> String {
     }
 }
 
-fn render_config_space_text(output: &mut String, snapshot: &ConfigSpaceSnapshot) {
+fn render_config_space_text(
+    output: &mut String,
+    palette: &Palette,
+    snapshot: &ConfigSpaceSnapshot,
+) {
     writeln!(output, "config-space:").unwrap();
     writeln!(
         output,
@@ -1259,17 +1348,26 @@ fn render_config_space_text(output: &mut String, snapshot: &ConfigSpaceSnapshot)
         for (row_index, chunk) in segment.bytes.chunks(16).enumerate() {
             let row_offset = segment.offset + (row_index as u32) * 16;
             let bytes: Vec<String> = chunk.iter().map(|byte| format!("{byte:02x}")).collect();
-            writeln!(output, "  {row_offset:04x}: {}", bytes.join(" ")).unwrap();
+            writeln!(
+                output,
+                "{} {}",
+                palette.dim(&format!("  {row_offset:04x}:",)),
+                bytes.join(" ")
+            )
+            .unwrap();
         }
     }
 
     for failure in &snapshot.failures {
         writeln!(
             output,
-            "  unavailable: 0x{:03x}..0x{:03x} <{:?}>",
-            failure.offset,
-            failure.offset + failure.length,
-            failure.reason
+            "{}",
+            palette.unavailable(&format!(
+                "  unavailable: 0x{:03x}..0x{:03x} <{:?}>",
+                failure.offset,
+                failure.offset + failure.length,
+                failure.reason
+            ))
         )
         .unwrap();
     }

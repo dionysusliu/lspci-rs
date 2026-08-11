@@ -39,12 +39,11 @@ fn run_list(
     format: OutputFormat,
     color: crate::color::ColorMode,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let _ = color;
     let mut session = PciSession::new()?;
     let snapshot = session.scan()?;
 
     match format {
-        OutputFormat::Text => Ok(output::render_text(&snapshot)),
+        OutputFormat::Text => Ok(output::render_text(&snapshot, color)),
         OutputFormat::Json => Ok(output::render_json(&snapshot)?),
     }
 }
@@ -55,7 +54,6 @@ fn run_show(
     format: OutputFormat,
     color: crate::color::ColorMode,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let _ = color;
     let mut session = PciSession::new()?;
     let inspection = session.inspect(address)?;
 
@@ -68,6 +66,7 @@ fn run_show(
         OutputFormat::Text => Ok(output::render_inspection_text(
             &inspection,
             snapshot.as_ref(),
+            color,
         )),
         OutputFormat::Json => Ok(output::render_inspection_json(
             &inspection,
