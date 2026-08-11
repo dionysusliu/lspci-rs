@@ -59,27 +59,6 @@ pub fn render_tree(
     Ok(output)
 }
 
-fn owner_bridge(windows: &[(PciAddress, BridgeWindow)], device: &PciDevice) -> Option<PciAddress> {
-    // innermost bridge whose [secondary, subordinate] contains the device bus
-    let mut best: Option<&(PciAddress, BridgeWindow)> = None;
-    for entry in windows {
-        if entry.0 == device.address {
-            continue;
-        }
-        let window = &entry.1;
-        if device.address.bus >= window.secondary && device.address.bus <= window.subordinate {
-            match best {
-                Some(current)
-                    if window.subordinate - window.secondary
-                        >= current.1.subordinate - current.1.secondary => {}
-                _ => best = Some(entry),
-            }
-        }
-    }
-    best.map(|entry| entry.0)
-}
-
-#[allow(clippy::too_many_arguments)]
 fn render_bus(
     output: &mut String,
     palette: &Palette,
@@ -92,53 +71,56 @@ fn render_bus(
     let mut sorted: Vec<&PciDevice> = devices
         .iter()
         .filter(|device| device.address.bus == bus)
-        .filter(|device| owner_bridge(windows, device).map_or(depth == 0, |_| depth > 0))
         .collect();
     sorted.sort_by_key(|device| (device.address.slot, device.address.function));
 
-    for device in sorted {
+    for (position, device) in sorted.iter().enumerate() {
         let connector = if depth == 0 {
-            format!(
-                "-[{:04x}:{:02x}]-+- ",
-                device.address.domain, device.address.bus
-            )
+            if position == 0 {
+                format!(
+                    "-[{:04x}:{:02x}]-+- ",
+                    device.address.domain, device.address.bus
+                )
+            } else {
+                "           +- ".to_owned()
+            }
         } else {
             format!("{prefix}+- ")
         };
-        let bridge_label = windows
+        let window = windows
             .iter()
             .find(|(address, _)| *address == device.address)
-            .map(|(_, window)| format!("-[{:02x}-{:02x}]", window.secondary, window.subordinate));
+            .map(|(_, window)| window);
 
         let address_text = format!(
             "{:02x}:{:02x}.{}",
             device.address.bus, device.address.slot, device.address.function
         );
-        match bridge_label {
-            Some(label) => {
+        match window {
+            Some(window) => {
                 output.push_str(&format!(
                     "{connector}{} {} {}\n",
                     palette.address(&address_text),
-                    palette.dim(&label),
+                    palette.dim(&format!(
+                        "-[{:02x}-{:02x}]",
+                        window.secondary, window.subordinate
+                    )),
                     device.device_name
                 ));
-                if let Some((_, window)) = windows
-                    .iter()
-                    .find(|(address, _)| *address == device.address)
-                {
-                    let child_prefix = format!("{prefix}|  ");
-                    for child_bus in window.secondary..=window.subordinate {
-                        render_bus(
-                            output,
-                            palette,
-                            devices,
-                            windows,
-                            child_bus,
-                            depth + 1,
-                            &child_prefix,
-                        );
-                    }
-                }
+                let child_prefix = if depth == 0 {
+                    "           ".to_owned()
+                } else {
+                    format!("{prefix}|  ")
+                };
+                render_bus(
+                    output,
+                    palette,
+                    devices,
+                    windows,
+                    window.secondary,
+                    depth + 1,
+                    &child_prefix,
+                );
             }
             None => {
                 output.push_str(&format!(
