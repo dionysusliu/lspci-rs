@@ -463,7 +463,7 @@ impl PciSession {
             )
         };
 
-        name_from_ptr(result)
+        fallback_name(name_from_ptr(result), "Vendor", vendor_id)
     }
 
     fn lookup_device(
@@ -487,7 +487,7 @@ impl PciSession {
             )
         };
 
-        name_from_ptr(result)
+        fallback_name(name_from_ptr(result), "Device", device_id)
     }
 
     fn lookup_class(access: *mut pci_sys::bindings::pci_access, class_id: u16) -> String {
@@ -533,6 +533,15 @@ fn name_from_ptr(ptr: *mut std::os::raw::c_char) -> String {
             .to_str()
             .map(str::to_owned)
             .unwrap_or_else(|_| "<unknown>".to_owned())
+    }
+}
+
+/// lspci-style fallback when the ids database has no entry: "Device 1bb8" / "Vendor 8086"
+fn fallback_name(lookup: String, kind: &str, id: u16) -> String {
+    if lookup == "<unknown>" {
+        format!("{kind} {id:04x}")
+    } else {
+        lookup
     }
 }
 
