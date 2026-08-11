@@ -19,6 +19,7 @@
 | 校准 | `aac4f48` | tree 改为逐桥层级渲染，消除桥重复出现 |
 | 修复 | `bbd9abb` | 恢复不可用字段标签（perl 替换残留 `$1`）+ 简化 tree 递归 |
 | 校准 | `786f187` | 顶层桥子设备加续行符缩进，消除与顶层平级的视觉歧义 |
+| 打磨 | `0f896a7` | ids 库无条目时回退 lspci 风格 `Device 1bb8` / `Vendor 8086` |
 
 ## 设计要点
 
@@ -48,6 +49,9 @@
   现加 `|` 续行符嵌套（commit `786f187`）。
 - 行数差异（rs 337 行 vs lspci -t 322 行）来自渲染风格：
   lspci 将桥链横向合并为一行，本工具逐设备一行，属预期差异。
+- 大量 `<unknown>` 设备名源于 Ice Lake-SP uncore 设备不在 pci.ids
+  （机器自带 lspci 3.8.0 同样显示 `Device 1bb8`）；已回退为
+  lspci 风格 `Device <id>`（commit `0f896a7`），`<unknown>` 计数归零。
 
 ## 校准中发现并修正的问题
 
