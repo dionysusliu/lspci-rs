@@ -1,6 +1,20 @@
 use super::{read_dword, read_word};
 use crate::ConfigSpaceSnapshot;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SriovVfBarKind {
+    Io,
+    Memory,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SriovVfBar {
+    pub kind: SriovVfBarKind,
+    pub is_64_bit: bool,
+    pub prefetchable: bool,
+    pub address: u64,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SriovCapability {
     pub capabilities: u32,
@@ -15,8 +29,9 @@ pub struct SriovCapability {
     pub vf_device_id: u16,
     pub supported_page_sizes: u32,
     pub system_page_size: u32,
-    pub vf_bars: [u32; 6],
+    pub vf_bars: [Option<SriovVfBar>; 6],
     pub migration_state_array_offset: u32,
+    pub migration_state_array_size: u32,
 }
 
 pub fn decode_sriov(snapshot: &ConfigSpaceSnapshot, offset: u16) -> Option<SriovCapability> {
@@ -35,12 +50,50 @@ pub fn decode_sriov(snapshot: &ConfigSpaceSnapshot, offset: u16) -> Option<Sriov
     let supported_page_sizes = read_dword(snapshot, base + 0x1c).ok()?;
     let system_page_size = read_dword(snapshot, base + 0x20).ok()?;
 
-    let mut vf_bars = [0u32; 6];
-    for (index, bar) in vf_bars.iter_mut().enumerate() {
+    let mut raw_bars = [0u32; 6];
+    for (index, bar) in raw_bars.iter_mut().enumerate() {
         *bar = read_dword(snapshot, base + 0x24 + (index as u32) * 4).ok()?;
     }
 
+    let mut vf_bars: [Option<SriovVfBar>; 6] = Default::default();
+    let mut index = 0;
+    while index < 6 {
+        let raw = raw_bars[index];
+        if raw & 0x1 != 0 {
+            vf_bars[index] = Some(SriovVfBar {
+                kind: SriovVfBarKind::Io,
+                is_64_bit: false,
+                prefetchable: false,
+                address: u64::from(raw & 0xffff_fffc),
+            });
+            index += 1;
+        } else {
+            let is_64_bit = (raw >> 1) & 0x3 == 0x2;
+            let prefetchable = raw & 0x8 != 0;
+            let mut address = u64::from(raw & 0xffff_fff0);
+            if is_64_bit && index + 1 < 6 {
+                address |= u64::from(raw_bars[index + 1]) << 32;
+                vf_bars[index] = Some(SriovVfBar {
+                    kind: SriovVfBarKind::Memory,
+                    is_64_bit,
+                    prefetchable,
+                    address,
+                });
+                index += 2;
+            } else {
+                vf_bars[index] = Some(SriovVfBar {
+                    kind: SriovVfBarKind::Memory,
+                    is_64_bit,
+                    prefetchable,
+                    address,
+                });
+                index += 1;
+            }
+        }
+    }
+
     let migration_state_array_offset = read_dword(snapshot, base + 0x40).ok()?;
+    let migration_state_array_size = read_dword(snapshot, base + 0x44).ok()?;
 
     Some(SriovCapability {
         capabilities,
@@ -57,5 +110,6 @@ pub fn decode_sriov(snapshot: &ConfigSpaceSnapshot, offset: u16) -> Option<Sriov
         system_page_size,
         vf_bars,
         migration_state_array_offset,
+        migration_state_array_size,
     })
 }

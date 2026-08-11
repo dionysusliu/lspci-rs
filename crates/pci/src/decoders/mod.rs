@@ -43,7 +43,7 @@ pub use pri::PriCapability;
 pub use ptm::PtmCapability;
 pub use secondary_pcie::SecondaryPcieCapability;
 pub use slot_id::SlotIdCapability;
-pub use sriov::SriovCapability;
+pub use sriov::{SriovCapability, SriovVfBar, SriovVfBarKind};
 pub use tph::TphCapability;
 pub use vc::VcCapability;
 pub use vendor::VendorSpecificCapability;

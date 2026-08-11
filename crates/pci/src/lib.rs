@@ -17,7 +17,8 @@ pub use decoders::{
     DvsecCapability, HotPlugCapability, LtrCapability, MsiCapability, MsiXCapability,
     PasidCapability, PciCapabilityContent, PciXCapability, PcieCapability, PmCapability,
     PriCapability, PtmCapability, SecondaryPcieCapability, SlotIdCapability, SriovCapability,
-    TphCapability, VcCapability, VendorExtCapability, VendorSpecificCapability, VpdCapability,
+    SriovVfBar, SriovVfBarKind, TphCapability, VcCapability, VendorExtCapability,
+    VendorSpecificCapability, VpdCapability,
 };
 pub use details::{PciDeviceDetails, PciInspection, PciResource};
 pub use device::{PciAddress, PciAddressParseError, PciDevice, PciSnapshot};

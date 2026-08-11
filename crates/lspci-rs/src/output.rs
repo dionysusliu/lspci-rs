@@ -3,7 +3,7 @@ use pci::{
     PciBarKind, PciBarType, PciBist, PciBridgeHeader, PciCapability, PciCapabilityChainStatus,
     PciCapabilityContent, PciCapabilityKind, PciCapabilityReport, PciExpansionRom, PciField,
     PciHeaderKind, PciHeaderType, PciInspection, PciInterruptPin, PciResource, PciSnapshot,
-    PcieCapability, StatusRegister, capability_name,
+    PcieCapability, SriovVfBarKind, StatusRegister, capability_name,
 };
 use serde::Serialize;
 use std::fmt::{Display, LowerHex, Write as _};
@@ -480,16 +480,37 @@ fn render_capability_content(content: &PciCapabilityContent) -> String {
                 .collect::<Vec<_>>()
                 .join("")
         ),
-        PciCapabilityContent::Sriov(sriov) => format!(
-            "initial_vfs={} total_vfs={} num_vfs={} vf_offset={} vf_stride={} vf_device_id=0x{:04x} control=0x{:04x}",
-            sriov.initial_vfs,
-            sriov.total_vfs,
-            sriov.num_vfs,
-            sriov.vf_offset,
-            sriov.vf_stride,
-            sriov.vf_device_id,
-            sriov.control
-        ),
+        PciCapabilityContent::Sriov(sriov) => {
+            let mut text = format!(
+                "initial_vfs={} total_vfs={} num_vfs={} vf_offset={} vf_stride={} vf_device_id=0x{:04x} control=0x{:04x}",
+                sriov.initial_vfs,
+                sriov.total_vfs,
+                sriov.num_vfs,
+                sriov.vf_offset,
+                sriov.vf_stride,
+                sriov.vf_device_id,
+                sriov.control
+            );
+            for (index, bar) in sriov.vf_bars.iter().enumerate() {
+                if let Some(bar) = bar {
+                    let description = match bar.kind {
+                        SriovVfBarKind::Io => format!("io at 0x{:x}", bar.address),
+                        SriovVfBarKind::Memory => format!(
+                            "memory-{}{} at 0x{:x}",
+                            if bar.is_64_bit { "64" } else { "32" },
+                            if bar.prefetchable { "-prefetch" } else { "" },
+                            bar.address
+                        ),
+                    };
+                    text.push_str(&format!("\n          VF Region {index}: {description}"));
+                }
+            }
+            text.push_str(&format!(
+                "\n          VF Migration: offset=0x{:08x} size=0x{:x}",
+                sriov.migration_state_array_offset, sriov.migration_state_array_size
+            ));
+            text
+        }
         PciCapabilityContent::Aer(aer) => render_aer_text(aer),
         PciCapabilityContent::Ltr(ltr) => format!(
             "snoop={}:{} no_snoop={}:{}",
@@ -1848,6 +1869,15 @@ struct JsonAcs {
 }
 
 #[derive(Debug, Serialize)]
+struct JsonSriovVfBar {
+    index: usize,
+    kind: String,
+    is_64_bit: bool,
+    prefetchable: bool,
+    address: String,
+}
+
+#[derive(Debug, Serialize)]
 struct JsonSriov {
     capabilities: String,
     control: String,
@@ -1861,8 +1891,9 @@ struct JsonSriov {
     vf_device_id: String,
     supported_page_sizes: String,
     system_page_size: String,
-    vf_bars: Vec<String>,
+    vf_bars: Vec<JsonSriovVfBar>,
     migration_state_array_offset: String,
+    migration_state_array_size: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -2530,9 +2561,22 @@ fn json_capability_content(content: &PciCapabilityContent) -> JsonCapabilityCont
             vf_bars: sriov
                 .vf_bars
                 .iter()
-                .map(|bar| format!("0x{bar:08x}"))
+                .enumerate()
+                .filter_map(|(index, bar)| {
+                    bar.map(|bar| JsonSriovVfBar {
+                        index,
+                        kind: match bar.kind {
+                            SriovVfBarKind::Io => "io".to_owned(),
+                            SriovVfBarKind::Memory => "memory".to_owned(),
+                        },
+                        is_64_bit: bar.is_64_bit,
+                        prefetchable: bar.prefetchable,
+                        address: format!("0x{:x}", bar.address),
+                    })
+                })
                 .collect(),
             migration_state_array_offset: format!("0x{:08x}", sriov.migration_state_array_offset),
+            migration_state_array_size: format!("0x{:x}", sriov.migration_state_array_size),
         }),
         PciCapabilityContent::Aer(aer) => JsonCapabilityContent::Aer(JsonAer {
             version: aer.version,
