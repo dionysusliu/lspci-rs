@@ -107,7 +107,7 @@ fn render_bus(
                     device.device_name
                 ));
                 let child_prefix = if depth == 0 {
-                    "           ".to_owned()
+                    "           |  ".to_owned()
                 } else {
                     format!("{prefix}|  ")
                 };
