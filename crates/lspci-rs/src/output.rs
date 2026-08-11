@@ -856,8 +856,10 @@ fn render_supported_speeds(vector: u8) -> String {
         .collect();
     if names.is_empty() {
         "unknown".to_owned()
+    } else if names.len() == 1 {
+        format!("{}GT/s", names[0])
     } else {
-        format!("{}GT/s", names.join("-"))
+        format!("{}-{}GT/s", names[0], names[names.len() - 1])
     }
 }
 
