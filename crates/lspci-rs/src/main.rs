@@ -1,4 +1,5 @@
 mod cli;
+mod color;
 mod output;
 
 use clap::Parser;
@@ -9,9 +10,10 @@ use crate::cli::{Command, ConfigLevel, OutputFormat};
 
 fn main() {
     let cli = Cli::parse();
+    let color = cli.color;
 
     match cli.command {
-        Command::List { format } => match run_list(format) {
+        Command::List { format } => match run_list(format, color) {
             Ok(output) => print!("{output}"),
             Err(error) => {
                 eprintln!("{error}");
@@ -23,7 +25,7 @@ fn main() {
             address,
             config,
             format,
-        } => match run_show(address, config, format) {
+        } => match run_show(address, config, format, color) {
             Ok(output) => print!("{output}"),
             Err(error) => {
                 eprintln!("{error}");
@@ -33,7 +35,11 @@ fn main() {
     }
 }
 
-fn run_list(format: OutputFormat) -> Result<String, Box<dyn std::error::Error>> {
+fn run_list(
+    format: OutputFormat,
+    color: crate::color::ColorMode,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let _ = color;
     let mut session = PciSession::new()?;
     let snapshot = session.scan()?;
 
@@ -47,7 +53,9 @@ fn run_show(
     address: PciAddress,
     config: Option<ConfigLevel>,
     format: OutputFormat,
+    color: crate::color::ColorMode,
 ) -> Result<String, Box<dyn std::error::Error>> {
+    let _ = color;
     let mut session = PciSession::new()?;
     let inspection = session.inspect(address)?;
 

@@ -1,12 +1,17 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use pci::PciAddress;
 
+use crate::color::ColorMode;
+
 #[derive(Debug, Parser)]
 #[command(name = "lspci-rs")]
 #[command(version)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
+
+    #[arg(long, global = true, value_enum, default_value_t = ColorMode::Auto)]
+    pub color: ColorMode,
 }
 
 #[derive(Debug, Subcommand)]
