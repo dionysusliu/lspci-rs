@@ -45,9 +45,10 @@ fn draw_tree(frame: &mut Frame, app: &mut App, area: Rect) {
         .enumerate()
     {
         let row = &app.model.rows[*row_index];
+        let open = app.model.is_expanded(*row_index) || !app.model.filter.is_empty();
         let marker = if !row.expandable {
             "  "
-        } else if app.model.is_expanded(*row_index) {
+        } else if open {
             "▾ "
         } else {
             "▸ "
@@ -108,7 +109,7 @@ fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
         app.model
             .rows
             .iter()
-            .filter(|row| row.address.is_some() && row.label.to_lowercase().contains(&lower))
+            .filter(|row| row.address.is_some() && row.search_text.to_lowercase().contains(&lower))
             .count()
     };
     let text = match app.mode {

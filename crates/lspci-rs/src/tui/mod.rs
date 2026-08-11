@@ -4,7 +4,7 @@ mod ui;
 use std::io::IsTerminal;
 
 use crossterm::ExecutableCommand;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
@@ -42,11 +42,15 @@ pub struct App {
 impl App {
     fn new(session: PciSession, model: tree::TreeModel) -> App {
         let visible = model.visible_rows();
+        let first_device = visible
+            .iter()
+            .position(|row| model.rows[*row].address.is_some())
+            .unwrap_or(0);
         let mut app = App {
             session,
             model,
             visible,
-            cursor: 0,
+            cursor: first_device,
             tree_offset: 0,
             detail: String::new(),
             detail_scroll: 0,
@@ -91,10 +95,17 @@ impl App {
         }
     }
 
-    pub fn handle_key(&mut self, key: KeyCode) -> Flow {
+    pub fn handle_key(&mut self, key: &KeyEvent) -> Flow {
+        if key
+            .modifiers
+            .contains(crossterm::event::KeyModifiers::CONTROL)
+            && matches!(key.code, KeyCode::Char('c') | KeyCode::Char('q'))
+        {
+            return Flow::Quit;
+        }
         match self.mode {
-            Mode::Normal => self.handle_normal(key),
-            Mode::Filter => self.handle_filter(key),
+            Mode::Normal => self.handle_normal(key.code),
+            Mode::Filter => self.handle_filter(key.code),
         }
     }
 
@@ -183,8 +194,8 @@ pub fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
     let mut app = App::new(session, model);
 
     enable_raw_mode()?;
-    std::io::stdout().execute(EnterAlternateScreen)?;
     let _guard = TerminalGuard;
+    std::io::stdout().execute(EnterAlternateScreen)?;
 
     let mut terminal = Terminal::new(CrosstermBackend::new(std::io::stdout()))?;
 
@@ -196,7 +207,7 @@ pub fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
         if key.kind != KeyEventKind::Press {
             continue;
         }
-        if app.handle_key(key.code) == Flow::Quit {
+        if app.handle_key(&key) == Flow::Quit {
             break;
         }
     }

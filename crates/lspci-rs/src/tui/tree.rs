@@ -8,6 +8,7 @@ pub struct Row {
     pub depth: usize,
     pub parent: Option<usize>,
     pub label: String,
+    pub search_text: String,
     pub address: Option<PciAddress>,
     pub expandable: bool,
 }
@@ -31,21 +32,23 @@ impl TreeModel {
         buses.dedup();
 
         for (domain, bus) in buses {
-            let covered = windows
-                .iter()
-                .any(|(_, window)| bus >= window.secondary && bus <= window.subordinate);
+            let covered = windows.iter().any(|(address, window)| {
+                address.domain == domain && bus >= window.secondary && bus <= window.subordinate
+            });
             if covered {
                 continue;
             }
             let parent = rows.len();
+            let label = format!("{domain:04x}:{bus:02x}");
             rows.push(Row {
                 depth: 0,
                 parent: None,
-                label: format!("{domain:04x}:{bus:02x}"),
+                search_text: label.clone(),
+                label,
                 address: None,
                 expandable: true,
             });
-            push_bus_devices(&mut rows, snapshot, windows, parent, bus, 1);
+            push_bus_devices(&mut rows, snapshot, windows, parent, domain, bus, 1);
         }
 
         let expanded = rows
@@ -68,7 +71,7 @@ impl TreeModel {
         let matched: Vec<bool> = self
             .rows
             .iter()
-            .map(|row| filtering && row.label.to_lowercase().contains(&lower))
+            .map(|row| filtering && row.search_text.to_lowercase().contains(&lower))
             .collect();
 
         let mut out = Vec::new();
@@ -121,13 +124,14 @@ fn push_bus_devices(
     snapshot: &PciSnapshot,
     windows: &[(PciAddress, BridgeWindow)],
     parent: usize,
+    domain: u16,
     bus: u8,
     depth: usize,
 ) {
     let mut devices: Vec<&PciDevice> = snapshot
         .devices()
         .iter()
-        .filter(|device| device.address.bus == bus)
+        .filter(|device| device.address.domain == domain && device.address.bus == bus)
         .collect();
     devices.sort_by_key(|device| (device.address.slot, device.address.function));
 
@@ -150,16 +154,34 @@ fn push_bus_devices(
                 window.secondary, window.subordinate
             ));
         }
+        let search_text = format!(
+            "{:04x}:{:02x}:{:02x}.{} {} {}",
+            device.address.domain,
+            device.address.bus,
+            device.address.slot,
+            device.address.function,
+            device.vendor_name,
+            device.device_name
+        );
         let index = rows.len();
         rows.push(Row {
             depth,
             parent: Some(parent),
             label,
+            search_text,
             address: Some(device.address),
             expandable: window.is_some(),
         });
         if let Some(window) = window {
-            push_bus_devices(rows, snapshot, windows, index, window.secondary, depth + 1);
+            push_bus_devices(
+                rows,
+                snapshot,
+                windows,
+                index,
+                device.address.domain,
+                window.secondary,
+                depth + 1,
+            );
         }
     }
 }
