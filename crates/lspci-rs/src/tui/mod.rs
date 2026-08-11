@@ -24,7 +24,6 @@ pub enum Flow {
 
 pub enum Mode {
     Normal,
-    #[allow(dead_code)] // used by the filter mode (later task)
     Filter,
 }
 
@@ -95,7 +94,7 @@ impl App {
     pub fn handle_key(&mut self, key: KeyCode) -> Flow {
         match self.mode {
             Mode::Normal => self.handle_normal(key),
-            Mode::Filter => Flow::Continue,
+            Mode::Filter => self.handle_filter(key),
         }
     }
 
@@ -129,6 +128,42 @@ impl App {
             KeyCode::PageDown => {
                 let lines = self.detail.lines().count() as u16;
                 self.detail_scroll = (self.detail_scroll + 10).min(lines.saturating_sub(1));
+            }
+            KeyCode::Char('/') => {
+                self.mode = Mode::Filter;
+                self.filter_input = self.model.filter.clone();
+            }
+            _ => {}
+        }
+        Flow::Continue
+    }
+
+    fn handle_filter(&mut self, key: KeyCode) -> Flow {
+        match key {
+            KeyCode::Esc => {
+                self.filter_input.clear();
+                self.model.filter.clear();
+                self.mode = Mode::Normal;
+                self.cursor = 0;
+                self.tree_offset = 0;
+                self.refresh();
+            }
+            KeyCode::Enter => {
+                self.mode = Mode::Normal;
+            }
+            KeyCode::Backspace => {
+                self.filter_input.pop();
+                self.model.filter = self.filter_input.clone();
+                self.cursor = 0;
+                self.tree_offset = 0;
+                self.refresh();
+            }
+            KeyCode::Char(character) => {
+                self.filter_input.push(character);
+                self.model.filter = self.filter_input.clone();
+                self.cursor = 0;
+                self.tree_offset = 0;
+                self.refresh();
             }
             _ => {}
         }
