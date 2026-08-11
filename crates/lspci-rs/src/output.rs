@@ -774,6 +774,32 @@ fn pcie_flag(enabled: bool) -> &'static str {
     if enabled { "+" } else { "-" }
 }
 
+fn pcie_l0s_latency(code: u8) -> &'static str {
+    match code {
+        0 => "<64ns",
+        1 => "<128ns",
+        2 => "<256ns",
+        3 => "<512ns",
+        4 => "<1us",
+        5 => "<2us",
+        6 => "<4us",
+        _ => ">4us",
+    }
+}
+
+fn pcie_l1_latency(code: u8) -> &'static str {
+    match code {
+        0 => "<1us",
+        1 => "<2us",
+        2 => "<4us",
+        3 => "<8us",
+        4 => "<16us",
+        5 => "<32us",
+        6 => "<64us",
+        _ => ">64us",
+    }
+}
+
 fn render_supported_speeds(vector: u8) -> String {
     let speeds: [(u8, &str); 6] = [
         (0x01, "2.5"),
@@ -815,8 +841,8 @@ fn render_pcie_text(pcie: &PcieCapability) -> String {
         "\n          DevCap: MaxPayload {} PhantFunc {} Latency L0s {} L1 {}",
         pcie_max_payload(dev_cap.max_payload),
         dev_cap.phantom_functions,
-        dev_cap.l0s_latency,
-        dev_cap.l1_latency
+        pcie_l0s_latency(dev_cap.l0s_latency),
+        pcie_l1_latency(dev_cap.l1_latency)
     ));
     output.push_str(&format!(
         "\n                  ExtTag{} AttnBtn{} AttnInd{} PwrInd{} RBE{} FLReset{}",
@@ -876,8 +902,8 @@ fn render_pcie_text(pcie: &PcieCapability) -> String {
         render_pcie_speed(lnk_cap.max_speed),
         lnk_cap.max_width,
         pcie_aspm_support(lnk_cap.aspm),
-        lnk_cap.l0s_exit_latency,
-        lnk_cap.l1_exit_latency
+        pcie_l0s_latency(lnk_cap.l0s_exit_latency),
+        pcie_l1_latency(lnk_cap.l1_exit_latency)
     ));
     output.push_str(&format!(
         "\n                  ClockPM{} Surprise{} LLActRep{} BwNot{} ASPMOptComp{}",
