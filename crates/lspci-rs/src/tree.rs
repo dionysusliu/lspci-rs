@@ -2,18 +2,16 @@ use pci::{ConfigReadLevel, PciAddress, PciDevice, PciSession, PciSnapshot};
 
 use crate::color::{ColorMode, Palette};
 
-struct BridgeWindow {
-    secondary: u8,
-    subordinate: u8,
+pub struct BridgeWindow {
+    pub secondary: u8,
+    pub subordinate: u8,
 }
 
-pub fn render_tree(
+/// Collect the downstream bus window [secondary, subordinate] of every PCI-PCI bridge.
+pub fn collect_bridge_windows(
     session: &mut PciSession,
     snapshot: &PciSnapshot,
-    color: ColorMode,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let palette = Palette::new(color);
-
+) -> Vec<(PciAddress, BridgeWindow)> {
     let mut windows: Vec<(PciAddress, BridgeWindow)> = Vec::new();
     for device in snapshot.devices() {
         if device.class_id == 0x0604
@@ -29,6 +27,17 @@ pub fn render_tree(
             ));
         }
     }
+    windows
+}
+
+pub fn render_tree(
+    session: &mut PciSession,
+    snapshot: &PciSnapshot,
+    color: ColorMode,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let palette = Palette::new(color);
+
+    let windows = collect_bridge_windows(session, snapshot);
 
     let mut output = String::new();
     let mut buses: Vec<u8> = snapshot
