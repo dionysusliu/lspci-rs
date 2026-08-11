@@ -203,6 +203,16 @@ pub struct PcieLinkSta2 {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PcieLinkCap2 {
+    /// Supported Link Speeds Vector, bits 7-1 of the register
+    pub supported_speeds: u8,
+    pub crosslink: bool,
+    pub retimer_supported: bool,
+    pub two_retimers_supported: bool,
+    pub drs_supported: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PcieCapability {
     pub version: u8,
     pub device_type: u8,
@@ -223,6 +233,7 @@ pub struct PcieCapability {
     pub dev_ctl2: Option<PcieDeviceCtl2>,
     pub lnk_ctl2: Option<PcieLinkCtl2>,
     pub lnk_sta2: Option<PcieLinkSta2>,
+    pub lnk_cap2: Option<PcieLinkCap2>,
 }
 
 pub fn decode_pcie(snapshot: &ConfigSpaceSnapshot, offset: u16) -> Option<PcieCapability> {
@@ -309,7 +320,7 @@ pub fn decode_pcie(snapshot: &ConfigSpaceSnapshot, offset: u16) -> Option<PcieCa
         (None, None)
     };
 
-    let (dev_cap2, dev_ctl2, lnk_ctl2, lnk_sta2) = if version >= 2 {
+    let (dev_cap2, dev_ctl2, lnk_ctl2, lnk_sta2, lnk_cap2) = if version >= 2 {
         let cap2 = read_dword(snapshot, base + 0x24).ok()?;
         let ctl2 = read_word(snapshot, base + 0x28).ok()?;
         let lnk_ctl2_raw = read_word(snapshot, base + 0x30).ok()?;
@@ -363,9 +374,19 @@ pub fn decode_pcie(snapshot: &ConfigSpaceSnapshot, offset: u16) -> Option<PcieCa
                 retimer_presence: ((lnk_sta2_raw >> 6) & 0x0003) as u8,
                 crosslink_resolution: ((lnk_sta2_raw >> 9) & 0x0003) as u8,
             }),
+            {
+                let lnk_cap2_raw = read_dword(snapshot, base + 0x2c).ok()?;
+                Some(PcieLinkCap2 {
+                    supported_speeds: ((lnk_cap2_raw >> 1) & 0x0000_007f) as u8,
+                    crosslink: lnk_cap2_raw & 0x0000_0001 != 0,
+                    retimer_supported: lnk_cap2_raw & 0x0000_0100 != 0,
+                    two_retimers_supported: lnk_cap2_raw & 0x0000_0200 != 0,
+                    drs_supported: lnk_cap2_raw & 0x0000_0400 != 0,
+                })
+            },
         )
     } else {
-        (None, None, None, None)
+        (None, None, None, None, None)
     };
 
     Some(PcieCapability {
@@ -453,5 +474,6 @@ pub fn decode_pcie(snapshot: &ConfigSpaceSnapshot, offset: u16) -> Option<PcieCa
         dev_ctl2,
         lnk_ctl2,
         lnk_sta2,
+        lnk_cap2,
     })
 }

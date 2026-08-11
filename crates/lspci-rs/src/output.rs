@@ -774,6 +774,27 @@ fn pcie_flag(enabled: bool) -> &'static str {
     if enabled { "+" } else { "-" }
 }
 
+fn render_supported_speeds(vector: u8) -> String {
+    let speeds: [(u8, &str); 6] = [
+        (0x01, "2.5"),
+        (0x02, "5"),
+        (0x04, "8"),
+        (0x08, "16"),
+        (0x10, "32"),
+        (0x20, "64"),
+    ];
+    let names: Vec<&str> = speeds
+        .iter()
+        .filter(|(bit, _)| vector & bit != 0)
+        .map(|(_, name)| *name)
+        .collect();
+    if names.is_empty() {
+        "unknown".to_owned()
+    } else {
+        format!("{}GT/s", names.join("-"))
+    }
+}
+
 fn render_pcie_text(pcie: &PcieCapability) -> String {
     let dev_cap = &pcie.dev_cap;
     let dev_ctl = &pcie.dev_ctl;
@@ -1004,6 +1025,17 @@ fn render_pcie_text(pcie: &PcieCapability) -> String {
             pcie_flag(lnk_sta2.equalization_phase3),
             pcie_flag(lnk_sta2.equalization_request),
             pcie_retimer_text(lnk_sta2.retimer_presence)
+        ));
+    }
+
+    if let Some(lnk_cap2) = &pcie.lnk_cap2 {
+        output.push_str(&format!(
+            "\n          LnkCap2: Supported Link Speeds: {}, Crosslink{} Retimer{} 2Retimers{} DRS{}",
+            render_supported_speeds(lnk_cap2.supported_speeds),
+            pcie_flag(lnk_cap2.crosslink),
+            pcie_flag(lnk_cap2.retimer_supported),
+            pcie_flag(lnk_cap2.two_retimers_supported),
+            pcie_flag(lnk_cap2.drs_supported)
         ));
     }
 
@@ -1532,6 +1564,8 @@ struct JsonPcie {
     lnk_ctl2: Option<JsonPcieLnkCtl2>,
     #[serde(skip_serializing_if = "Option::is_none")]
     lnk_sta2: Option<JsonPcieLnkSta2>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lnk_cap2: Option<JsonPcieLnkCap2>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1732,6 +1766,15 @@ struct JsonPcieLnkSta2 {
     equalization_request: bool,
     retimer_presence: u8,
     crosslink_resolution: u8,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonPcieLnkCap2 {
+    supported_speeds: String,
+    crosslink: bool,
+    retimer_supported: bool,
+    two_retimers_supported: bool,
+    drs_supported: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -2356,6 +2399,13 @@ fn json_capability_content(content: &PciCapabilityContent) -> JsonCapabilityCont
                     equalization_request: lnk_sta2.equalization_request,
                     retimer_presence: lnk_sta2.retimer_presence,
                     crosslink_resolution: lnk_sta2.crosslink_resolution,
+                }),
+                lnk_cap2: pcie.lnk_cap2.as_ref().map(|lnk_cap2| JsonPcieLnkCap2 {
+                    supported_speeds: render_supported_speeds(lnk_cap2.supported_speeds),
+                    crosslink: lnk_cap2.crosslink,
+                    retimer_supported: lnk_cap2.retimer_supported,
+                    two_retimers_supported: lnk_cap2.two_retimers_supported,
+                    drs_supported: lnk_cap2.drs_supported,
                 }),
             })
         }
